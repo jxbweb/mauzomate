@@ -59,11 +59,13 @@ useEffect(() => {
       alert(error.message);
     } else {
       setSales(data.map(sale => ({
-        ...sale,
-        unitPrice: Number(sale.unit_price),
-        date: sale.sale_date,
-        time: sale.sale_time
-      })));
+  ...sale,
+  amount: Number(sale.amount),
+  quantity: Number(sale.quantity),
+  unitPrice: Number(sale.unit_price),
+  date: new Date(`${sale.sale_date}T00:00:00`).toLocaleDateString(),
+  time: sale.sale_time
+})));
     }
   }
 
@@ -82,7 +84,11 @@ useEffect(() => {
     if (error) {
       alert(error.message);
     } else {
-      setExpenses(data);
+      setExpenses(data.map(expense => ({
+  ...expense,
+  amount: Number(expense.amount),
+  date: new Date(`${expense.expense_date}T00:00:00`).toLocaleDateString()
+})));
     }
   }
 
@@ -101,9 +107,9 @@ useEffect(() => {
       alert(error.message);
     } else {
       setCustomers(data.map(customer => ({
-        ...customer,
-        totalSpent: Number(customer.total_spent)
-      })));
+  ...customer,
+  totalSpent: Number(customer.total_spent || 0)
+})));
     }
   }
 
@@ -247,49 +253,35 @@ if (selectedProduct.quantity < quantity) {
   date: new Date().toLocaleDateString(),
   time: new Date().toLocaleTimeString()
 };
-  const { data, error } = await supabase
-  .from('sales')
-  .insert({
-    product_id: selectedProduct.id,
-    description: selectedProduct.name,
-    quantity,
-    unit_price: selectedProduct.price,
-    amount: saleAmount,
-    sale_date: new Date().toISOString().slice(0, 10),
-    sale_time: new Date().toLocaleTimeString()
-  })
-  .select()
-  .single();
+  const { data, error } = await supabase.rpc('record_sale', {
+  p_product_id: selectedProduct.id,
+  p_customer_id: selectedCustomerId || null,
+  p_quantity: quantity,
+  p_sale_date: new Date().toISOString().slice(0, 10),
+  p_sale_time: new Date().toLocaleTimeString()
+});
 
 if (error) {
   alert(error.message);
   return;
 }
 
+const savedSale = data.sale;
+
 setSales(previousSales => [{
-  ...data,
-  unitPrice: Number(data.unit_price),
-  date: data.sale_date,
-  time: data.sale_time
+  ...savedSale,
+  amount: Number(savedSale.amount),
+  quantity: Number(savedSale.quantity),
+  unitPrice: Number(savedSale.unit_price),
+  date: new Date(`${savedSale.sale_date}T00:00:00`).toLocaleDateString(),
+  time: savedSale.sale_time
 }, ...previousSales]);
-
-  const { data: updatedProduct, error: stockError } = await supabase
-  .from('products')
-  .update({
-    quantity: selectedProduct.quantity - quantity
-  })
-  .eq('id', selectedProduct.id)
-  .select()
-  .single();
-
-if (stockError) {
-  alert('Sale saved, but stock update failed: ' + stockError.message);
-  return;
-}
 
 setProducts(previousProducts =>
   previousProducts.map(product =>
-    product.id === selectedProduct.id ? updatedProduct : product
+    product.id === selectedProduct.id
+      ? { ...product, quantity: data.remaining_stock }
+      : product
   )
 );
 
@@ -554,9 +546,10 @@ if (!user) {
                 <p className="muted">Enter a new customer purchase.</p>
 
                 <form onSubmit={addSale}>
-                 <select
+<select
   value={description}
   onChange={e => setDescription(e.target.value)}
+  required
 >
   <option value="">Select a product</option>
   {products.map(product => (
@@ -575,13 +568,7 @@ if (!user) {
     </option>
   ))}
 </select>
-                  <input
-                    type="text"
-                    placeholder="e.g. Sugar, Bread, Milk"
-                    value={description}
-                    onChange={e => setDescription(e.target.value)}
-                  />
-
+                 
                   <label>Quantity Sold</label>
 <input
   type="number"
@@ -592,14 +579,7 @@ if (!user) {
   onChange={e => setQuantitySold(e.target.value)}
   required
 />
-                  <input
-                    type="number"
-                    min="1"
-                    placeholder="e.g. 500"
-                    value={amount}
-                    onChange={e => setAmount(e.target.value)}
-                    required
-                  />
+                  
 
                   <button type="submit">+ Record Sale</button>
                 </form>
