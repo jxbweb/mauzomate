@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react';
 import './App.css';
 import {
+  
   LineChart,
   Line,
   XAxis,
@@ -10,56 +11,142 @@ import {
   Tooltip,
   ResponsiveContainer
 } from 'recharts';
+import Auth from './Auth';
+import { supabase } from './supabase';
 function App() {
- const [sales, setSales] = useState(() => {
-  const savedSales = localStorage.getItem('mauzomate-sales');
-  return savedSales ? JSON.parse(savedSales) : [];
-});
+  const [user, setUser] = useState(null);
+  async function handleLogout() {
+  const { error } = await supabase.auth.signOut();
+
+  if (error) {
+    alert(error.message);
+  }
+}
+  const [cloudProductsLoading, setCloudProductsLoading] = useState(false);
+  useEffect(() => {
+  async function loadProducts() {
+    if (!user) return;
+
+    setCloudProductsLoading(true);
+
+    const { data, error } = await supabase
+      .from('products')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      alert('Could not load products: ' + error.message);
+    } else {
+      setProducts(data);
+    }
+
+    setCloudProductsLoading(false);
+  }
+
+  loadProducts();
+}, [user]);
+
+useEffect(() => {
+  async function loadSales() {
+    if (!user) return;
+
+    const { data, error } = await supabase
+      .from('sales')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      alert(error.message);
+    } else {
+      setSales(data.map(sale => ({
+        ...sale,
+        unitPrice: Number(sale.unit_price),
+        date: sale.sale_date,
+        time: sale.sale_time
+      })));
+    }
+  }
+
+  loadSales();
+}, [user]);
+
+useEffect(() => {
+  async function loadExpenses() {
+    if (!user) return;
+
+    const { data, error } = await supabase
+      .from('expenses')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      alert(error.message);
+    } else {
+      setExpenses(data);
+    }
+  }
+
+  loadExpenses();
+}, [user]);
+useEffect(() => {
+  async function loadCustomers() {
+    if (!user) return;
+
+    const { data, error } = await supabase
+      .from('customers')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      alert(error.message);
+    } else {
+      setCustomers(data.map(customer => ({
+        ...customer,
+        totalSpent: Number(customer.total_spent)
+      })));
+    }
+  }
+
+  loadCustomers();
+}, [user]);
+const [authLoading, setAuthLoading] = useState(true);
+
+useEffect(() => {
+  supabase.auth.getSession().then(({ data }) => {
+    setUser(data.session?.user ?? null);
+    setAuthLoading(false);
+  });
+
+  const { data: { subscription } } =
+    supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null);
+      setAuthLoading(false);
+    });
+
+  return () => subscription.unsubscribe();
+}, []);
+ const [sales, setSales] = useState([]);
   const [amount, setAmount] = useState('');
   const [quantitySold, setQuantitySold] = useState('1');
   const [description, setDescription] = useState('');
   const [activeSection, setActiveSection] = useState('Dashboard');
-const [expenses, setExpenses] = useState(() => {
-  const savedExpenses = localStorage.getItem('mauzomate-expenses');
-  return savedExpenses ? JSON.parse(savedExpenses) : [];
-});
-
+const [expenses, setExpenses] = useState([]);
 const [expenseName, setExpenseName] = useState('');
 const [expenseAmount, setExpenseAmount] = useState('');
-const [customers, setCustomers] = useState(() => {
-  const savedCustomers = localStorage.getItem('mauzomate-customers');
-  return savedCustomers ? JSON.parse(savedCustomers) : [];
-});
+const [customers, setCustomers] = useState([]);
 const [customerName, setCustomerName] = useState('');
 const [customerPhone, setCustomerPhone] = useState('');
 const [selectedCustomerId, setSelectedCustomerId] = useState('');
   // Inventory data
-  const [products, setProducts] = useState(() => {
-    try {
-      return JSON.parse(localStorage.getItem('mauzomate-products')) || [];
-    } catch {
-      return [];
-    }
-  });
+  const [products, setProducts] = useState([]);
 
   const [productName, setProductName] = useState('');
   const [productPrice, setProductPrice] = useState('');
   const [productQuantity, setProductQuantity] = useState('');
   const [editingId, setEditingId] = useState(null);
 
-  // Save inventory in the browser
-  useEffect(() => {
-    localStorage.setItem('mauzomate-products', JSON.stringify(products));
-  }, [products]);
-useEffect(() => {
-  localStorage.setItem('mauzomate-sales', JSON.stringify(sales));
-}, [sales]);
-useEffect(() => {
-  localStorage.setItem('mauzomate-expenses', JSON.stringify(expenses));
-}, [expenses]);
-useEffect(() => {
-  localStorage.setItem('mauzomate-customers', JSON.stringify(customers));
-}, [customers]);
+  
+
 const today = new Date().toLocaleDateString();
 
 const todaysSales = sales
@@ -123,7 +210,7 @@ const highestDailySales = Math.max(
   ...salesByDate.map(day => day.revenue),
   1
 );
-function addSale(e) {
+async function addSale(e) {
   e.preventDefault();
 
   const selectedProduct = products.find(
@@ -160,21 +247,57 @@ if (selectedProduct.quantity < quantity) {
   date: new Date().toLocaleDateString(),
   time: new Date().toLocaleTimeString()
 };
-  setSales(previousSales => [newSale, ...previousSales]);
+  const { data, error } = await supabase
+  .from('sales')
+  .insert({
+    product_id: selectedProduct.id,
+    description: selectedProduct.name,
+    quantity,
+    unit_price: selectedProduct.price,
+    amount: saleAmount,
+    sale_date: new Date().toISOString().slice(0, 10),
+    sale_time: new Date().toLocaleTimeString()
+  })
+  .select()
+  .single();
 
-  setProducts(previousProducts =>
-    previousProducts.map(product =>
-      product.id === selectedProduct.id
-        ? { ...product, quantity: product.quantity - quantity }
-        : product
-    )
-  );
+if (error) {
+  alert(error.message);
+  return;
+}
+
+setSales(previousSales => [{
+  ...data,
+  unitPrice: Number(data.unit_price),
+  date: data.sale_date,
+  time: data.sale_time
+}, ...previousSales]);
+
+  const { data: updatedProduct, error: stockError } = await supabase
+  .from('products')
+  .update({
+    quantity: selectedProduct.quantity - quantity
+  })
+  .eq('id', selectedProduct.id)
+  .select()
+  .single();
+
+if (stockError) {
+  alert('Sale saved, but stock update failed: ' + stockError.message);
+  return;
+}
+
+setProducts(previousProducts =>
+  previousProducts.map(product =>
+    product.id === selectedProduct.id ? updatedProduct : product
+  )
+);
 
   setDescription('');
 setAmount('');
  setQuantitySold('1');
 }
-function addExpense(e) {
+async function addExpense(e) {
   e.preventDefault();
 
   const value = Number(expenseAmount);
@@ -191,12 +314,27 @@ function addExpense(e) {
     date: new Date().toLocaleDateString(),
   };
 
-  setExpenses(previousExpenses => [newExpense, ...previousExpenses]);
+  const { data, error } = await supabase
+  .from('expenses')
+  .insert({
+    name: newExpense.name,
+    amount: newExpense.amount,
+    expense_date: new Date().toISOString().slice(0, 10)
+  })
+  .select()
+  .single();
+
+if (error) {
+  alert(error.message);
+  return;
+}
+
+setExpenses(previousExpenses => [data, ...previousExpenses]);
 
   setExpenseName('');
   setExpenseAmount('');
 }
-function addCustomer(e) {
+async function addCustomer(e) {
   e.preventDefault();
 
   if (!customerName.trim()) {
@@ -211,12 +349,30 @@ function addCustomer(e) {
     totalSpent: 0
   };
 
-  setCustomers(previousCustomers => [newCustomer, ...previousCustomers]);
+  const { data, error } = await supabase
+  .from('customers')
+  .insert({
+    name: newCustomer.name,
+    phone: newCustomer.phone,
+    total_spent: 0
+  })
+  .select()
+  .single();
+
+if (error) {
+  alert(error.message);
+  return;
+}
+
+setCustomers(previousCustomers => [
+  { ...data, totalSpent: Number(data.total_spent) },
+  ...previousCustomers
+]);
 
   setCustomerName('');
   setCustomerPhone('');
 }
-function saveProduct(e) {
+async function saveProduct(e) {
   e.preventDefault();
 
   if (
@@ -230,26 +386,45 @@ function saveProduct(e) {
   }
 
   if (editingId !== null) {
-    setProducts(products.map(product =>
-      product.id === editingId
-        ? {
-            ...product,
-            name: productName.trim(),
-            price: Number(productPrice),
-            quantity: Number(productQuantity)
-          }
-        : product
-    ));
-  } else {
-    const newProduct = {
-      id: Date.now(),
+  const { data, error } = await supabase
+    .from('products')
+    .update({
       name: productName.trim(),
       price: Number(productPrice),
       quantity: Number(productQuantity)
-    };
+    })
+    .eq('id', editingId)
+    .select()
+    .single();
 
-    setProducts([...products, newProduct]);
+  if (error) {
+    alert(error.message);
+    return;
   }
+
+  setProducts(previous =>
+    previous.map(product =>
+      product.id === editingId ? data : product
+    )
+  );
+} else {
+  const { data, error } = await supabase
+    .from('products')
+    .insert({
+      name: productName.trim(),
+      price: Number(productPrice),
+      quantity: Number(productQuantity)
+    })
+    .select()
+    .single();
+
+  if (error) {
+    alert(error.message);
+    return;
+  }
+
+  setProducts(previous => [...previous, data]);
+}
 
   clearProductForm();
 }
@@ -261,9 +436,19 @@ function editProduct(product) {
   setProductQuantity(String(product.quantity));
 }
 
-function deleteProduct(id) {
-  if (window.confirm('Are you sure you want to delete this product?')) {
-    setProducts(products.filter(product => product.id !== id));
+async function deleteProduct(id) {
+ if (window.confirm('Are you sure you want to delete this product?')) {
+  const { error } = await supabase
+    .from('products')
+    .delete()
+    .eq('id', id);
+
+  if (error) {
+    alert(error.message);
+    return;
+  }
+
+  setProducts(products.filter(product => product.id !== id));
 
     if (editingId === id) {
       clearProductForm();
@@ -287,7 +472,13 @@ function clearProductForm() {
     ['Reports', '📊'],
     ['Settings', '⚙️']
   ];
+if (authLoading) {
+  return <p>Loading MauzoMate...</p>;
+}
 
+if (!user) {
+  return <Auth onLogin={setUser} />;
+}
   return (
     <div className="app">
       <aside className="sidebar">
@@ -322,7 +513,9 @@ function clearProductForm() {
               </div>
               <div className="profile">M</div>
             </header>
-
+<button onClick={handleLogout}>
+  Logout
+</button>
             <section className="welcome">
               <div>
                 <h2>Welcome to MauzoMate 👋</h2>
