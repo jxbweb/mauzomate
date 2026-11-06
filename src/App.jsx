@@ -13,14 +13,47 @@ import {
 } from 'recharts';
 import Auth from './Auth';
 import { supabase } from './supabase';
+import { useRef } from 'react';
 function App() {
   const [user, setUser] = useState(null);
+  const [profilePhotoUrl, setProfilePhotoUrl] = useState('');
+  const [profileMenuOpen, setProfileMenuOpen] = useState(false);
+const fileInputRef = useRef(null);
   async function handleLogout() {
   const { error } = await supabase.auth.signOut();
 
   if (error) {
     alert(error.message);
   }
+  }
+
+  async function uploadProfilePhoto(event) {
+  const file = event.target.files?.[0];
+
+  if (!file || !user) return;
+
+  setPhotoLoading(true);
+
+  const { error } = await supabase.storage
+    .from('profile-photos')
+    .upload(`${user.id}/profile.jpg`, file, {
+      upsert: true,
+      contentType: file.type
+    });
+
+  if (error) {
+    alert(error.message);
+  } else {
+    const { data } = await supabase.storage
+      .from('profile-photos')
+      .createSignedUrl(`${user.id}/profile.jpg`, 3600);
+
+    setProfilePhotoUrl(data?.signedUrl || '');
+    alert('Profile photo updated successfully.');
+  }
+
+  setPhotoLoading(false);
+  event.target.value = '';
 }
   const [cloudProductsLoading, setCloudProductsLoading] = useState(false);
   useEffect(() => {
@@ -116,7 +149,7 @@ useEffect(() => {
   loadCustomers();
 }, [user]);
 const [authLoading, setAuthLoading] = useState(true);
-
+const [photoLoading, setPhotoLoading] = useState(false);
 useEffect(() => {
   supabase.auth.getSession().then(({ data }) => {
     setUser(data.session?.user ?? null);
@@ -131,6 +164,22 @@ useEffect(() => {
 
   return () => subscription.unsubscribe();
 }, []);
+useEffect(() => {
+  async function loadProfilePhoto() {
+    if (!user) {
+      setProfilePhotoUrl('');
+      return;
+    }
+
+    const { data } = await supabase.storage
+      .from('profile-photos')
+      .createSignedUrl(`${user.id}/profile.jpg`, 3600);
+
+    setProfilePhotoUrl(data?.signedUrl || '');
+  }
+
+  loadProfilePhoto();
+}, [user]);
  const [sales, setSales] = useState([]);
   const [amount, setAmount] = useState('');
   const [quantitySold, setQuantitySold] = useState('1');
@@ -138,7 +187,22 @@ useEffect(() => {
   const [activeSection, setActiveSection] = useState('Dashboard');
 const [expenses, setExpenses] = useState([]);
 const [expenseName, setExpenseName] = useState('');
-const [expenseAmount, setExpenseAmount] = useState('');
+const [expenseAmount, setExpenseAmount] = useState('');const [businessName, setBusinessName] = useState(
+  
+  () => localStorage.getItem('mauzomate-business-name') || ''
+);
+const [businessPhone, setBusinessPhone] = useState(
+  () => localStorage.getItem('mauzomate-business-phone') || ''
+);
+const [currency, setCurrency] = useState(
+  () => localStorage.getItem('mauzomate-currency') || 'KES'
+);
+const [darkMode, setDarkMode] = useState(
+  () => localStorage.getItem('mauzomate-dark-mode') === 'true'
+);
+const [notifications, setNotifications] = useState(
+  () => localStorage.getItem('mauzomate-notifications') === 'true'
+);
 const [customers, setCustomers] = useState([]);
 const [customerName, setCustomerName] = useState('');
 const [customerPhone, setCustomerPhone] = useState('');
@@ -664,7 +728,7 @@ if (!user) {
   return <Auth onLogin={setUser} />;
 }
   return (
-    <div className="app">
+    <div className={`app ${darkMode ? 'dark-mode' : ''}`}>
       <aside className="sidebar">
         <h2 className="logo">Mauzo<span>Mate</span></h2>
         <p className="tagline">YOUR BUSINESS PARTNER</p>
@@ -691,18 +755,66 @@ if (!user) {
           <>
             <header className="topbar">
               <div>
-                <h1>Dashboard</h1>
+                <h1>{businessName || 'MauzoMate'} Dashboard</h1>
                 <p>Welcome to your business overview.</p>
                 
               </div>
-              <div className="profile">M</div>
-            </header>
-<button onClick={handleLogout}>
-  Logout
+              <div className="profile">
+  <img
+    src={profilePhotoUrl || 'https://placehold.co/100x100?text=M'}
+    alt="Profile"
+    className="profile-photo"
+    onClick={() => setProfileMenuOpen(!profileMenuOpen)}
+  />
+
+  <input
+    type="file"
+    accept="image/jpeg,image/png,image/webp"
+    ref={fileInputRef}
+    onChange={uploadProfilePhoto}
+    style={{ display: 'none' }}
+  />
+
+  {profileMenuOpen && (
+    <div className="profile-menu">
+      <button onClick={() => {
+  setActiveSection('Settings');
+  setProfileMenuOpen(false);
+}}>
+  👤 My Profile & Settings
 </button>
-<button onClick={exportData}>
+
+<button onClick={() => {
+  fileInputRef.current.click();
+  setProfileMenuOpen(false);
+}}>
+  📷 Change Profile Photo
+</button>
+
+<button onClick={() => {
+  exportData();
+  setProfileMenuOpen(false);
+}}>
+  💾
   Download Backup
 </button>
+
+<button onClick={() => {
+  setProfileMenuOpen(false);
+}}>
+  🔒 Account & Security
+</button>
+
+<button onClick={handleLogout}>
+  ↪ Log Out
+</button>
+
+     
+    </div>
+  )}
+</div>
+</header>
+
             <section className="welcome">
               <div>
                 <h2>Welcome to MauzoMate 👋</h2>
@@ -713,7 +825,9 @@ if (!user) {
             <section className="stats">
               <div className="stat-card">
                 <p>Today's Sales</p>
-<h2>KSh {todaySales.toLocaleString('en-KE')}</h2>
+<h2>
+  {currency} {todaySales.toLocaleString()}
+</h2>
                 <span>Sales recorded today</span>
               </div>
 
@@ -730,7 +844,7 @@ if (!user) {
 </div>
 <div className="stat-card">
   <p>Estimated Profit Today</p>
-  <h2>KSh {todayProfit.toLocaleString('en-KE')}</h2>
+  <h2>{currency} {todayProfit.toLocaleString()}</h2>
   <span>Today's sales minus expenses</span>
 </div>
             </section>
@@ -749,7 +863,7 @@ if (!user) {
   <option value="">Select a product</option>
   {products.map(product => (
     <option key={product.id} value={product.name}>
-      {product.name} — KSh {product.price} (Stock: {product.quantity})
+      {product.name} — {currency} {product.price} (Stock: {product.quantity})
     </option>
   ))}
 </select><select
@@ -799,7 +913,7 @@ if (!user) {
                           <p>{sale.date}</p>
                         </div>
                         <strong className="sale-amount">
-                          + KSh {sale.amount.toLocaleString('en-KE')}
+                          + {currency} {Number(sale.amount).toLocaleString()}
                         </strong>
                       </div>
                     ))}
@@ -850,10 +964,10 @@ if (!user) {
 >
       <CartesianGrid stroke="#e5e7eb" strokeDasharray="4 4" vertical={false} />
         <XAxis dataKey="date" tick={{ fontSize: 12 }} />
-        <YAxis tickFormatter={(value) => `KSh ${value}`} />
+        <YAxis tickFormatter={(value) => `${currency} ${value}`} />
         <Tooltip
           formatter={(value) => [
-            `KSh ${Number(value).toLocaleString('en-KE')}`,
+           `${currency} ${Number(value).toLocaleString()}`,
             'Revenue'
           ]}
         />
@@ -876,7 +990,14 @@ if (!user) {
                 <h1>Sales History</h1>
                 <p>Track all your business transactions.</p>
               </div>
-              <div className="profile">M</div>
+              <div className="profile">
+  <img
+    src={profilePhotoUrl || 'https://placehold.co/100x100?text=M'}
+    alt="Profile"
+    className="profile-photo"
+    onClick={() => setProfileMenuOpen(!profileMenuOpen)}
+  />
+</div>
             </header>
 
             <section className="stats">
@@ -888,17 +1009,17 @@ if (!user) {
 
               <div className="stat-card">
                 <p>Total Revenue</p>
-                <h2>KSh {totalSales.toLocaleString('en-KE')}</h2>
+                <h2>{currency} {totalSales.toLocaleString()}</h2>
                 <span>All recorded sales</span>
               </div>
 
               <div className="stat-card">
                 <p>Today's Sales</p>
                 <h2>
-                  KSh {sales
-                    .filter(sale => sale.date === new Date().toLocaleDateString())
-                    .reduce((total, sale) => total + sale.amount, 0)
-                    .toLocaleString('en-KE')}
+                  {currency} {sales
+  .filter(sale => sale.date === new Date().toLocaleDateString())
+  .reduce((total, sale) => total + Number(sale.amount), 0)
+  .toLocaleString()}
                 </h2>
                 <span>Revenue today</span>
               </div>
@@ -914,10 +1035,11 @@ if (!user) {
                 </div>
               ) : (
                 <div className="inventory-table-wrapper">
-                  <table className="inventory-table">
+                 <table className="inventory-table history-table"> 
                     <thead>
-                      <tr>
-                        <th>Product</th>
+  <tr>
+    <th>#</th>
+    <th>Product</th>
                         <th>Quantity</th>
                         <th>Unit Price</th>
                         <th>Total</th>
@@ -926,15 +1048,16 @@ if (!user) {
                       </tr>
                     </thead>
                     <tbody>
-                      {sales.map(sale => (
+                      {sales.map((sale, index) => (
                         <tr key={sale.id}>
+                          <td>{index + 1}</td>
                           <td>{sale.description}</td>
                           <td>{sale.quantity ?? 1}</td>
                           <td>
-                            KSh {(sale.unitPrice ?? sale.amount).toLocaleString('en-KE')}
+                            {currency} {Number(sale.unitPrice ?? sale.amount).toLocaleString()}
                           </td>
                           <td>
-                            KSh {sale.amount.toLocaleString('en-KE')}
+                            {currency} {Number(sale.amount).toLocaleString()}
                           </td>
                           <td>{sale.date}</td>
                           <td>{sale.time || 'Earlier sale'}</td>
@@ -947,8 +1070,18 @@ if (!user) {
             </section>
           </>
       ) : activeSection === 'Customers' ? (
-  <div className="page-content">
-    <h2>Customer Management</h2>
+<div className="page-content">
+  <div style={{ display: 'flex', justifyContent: 'flex-end', width: '100%', marginBottom: '15px' }}>
+    <div className="profile">
+      <img
+        src={profilePhotoUrl || 'https://placehold.co/100x100?text=M'}
+        alt="Profile"
+        className="profile-photo"
+      />
+    </div>
+  </div>
+
+  <h2>Customer Management</h2>
     <p>Manage your business customers.</p>
 
     <div className="form-card">
@@ -986,18 +1119,20 @@ if (!user) {
           <table className="inventory-table">
             <thead>
               <tr>
-                <th>Name</th>
+  <th>#</th>
+  <th>Name</th>
                 <th>Phone</th>
                 <th>Total Spent</th>
                 <th>Actions</th>
               </tr>
             </thead>
             <tbody>
-              {customers.map(customer => (
+              {customers.map((customer, index) => (
                 <tr key={customer.id}>
+                  <td>{index + 1}</td>
                   <td>{customer.name}</td>
                   <td>{customer.phone || 'Not provided'}</td>
-                  <td>KSh {customer.totalSpent.toLocaleString('en-KE')}</td>
+                  <td>{currency} {Number(customer.totalSpent).toLocaleString()}</td>
                   <td>
   <button onClick={() => editCustomer(customer)}>
     Edit
@@ -1016,18 +1151,27 @@ if (!user) {
   </div>
 ) : activeSection === 'Expenses' ? (
   <div className="page-content">
+    <div style={{ display: 'flex', justifyContent: 'flex-end', width: '100%', marginBottom: '15px' }}>
+  <div className="profile">
+    <img
+      src={profilePhotoUrl || 'https://placehold.co/100x100?text=M'}
+      alt="Profile"
+      className="profile-photo"
+    />
+  </div>
+</div>
     <h2>Expenses Management</h2>
     <p>Track money spent by your business.</p>
 
     <div className="stats-grid">
       <div className="stat-card">
         <h3>Total Expenses</h3>
-        <h2>KSh {totalExpenses.toLocaleString()}</h2>
+        <h2>{currency} {totalExpenses.toLocaleString()}</h2>
       </div>
 
       <div className="stat-card">
         <h3>Estimated Profit</h3>
-        <h2>KSh {estimatedProfit.toLocaleString()}</h2>
+        <h2>{currency} {estimatedProfit.toLocaleString()}</h2>
       </div>
     </div>
     <div className="form-card">
@@ -1042,7 +1186,7 @@ if (!user) {
           required
         />
 
-        <label>Amount (KSh)</label>
+        <label>Amount ({currency})</label>
         <input
           type="number"
           min="0.01"
@@ -1064,20 +1208,22 @@ if (!user) {
         <p>No expenses recorded yet.</p>
       ) : (
         <div className="inventory-table-wrapper">
-          <table className="inventory-table">
+         <table className="inventory-table history-table">
             <thead>
               <tr>
-                <th>Description</th>
+  <th>#</th>
+  <th>Description</th>
                 <th>Amount</th>
                 <th>Date</th>
                 <th>Actions</th>
               </tr>
             </thead>
             <tbody>
-              {expenses.map(expense => (
-                <tr key={expense.id}>
-                  <td>{expense.name}</td>
-                  <td>KSh {expense.amount.toLocaleString()}</td>
+              {expenses.map((expense, index) => (
+  <tr key={expense.id}>
+    <td>{index + 1}</td>
+    <td>{expense.name}</td>
+                  <td>{currency} {Number(expense.amount).toLocaleString()}</td>
                   <td>{expense.date}</td>
                   <td>
   <button onClick={() => editExpense(expense)}>
@@ -1100,25 +1246,25 @@ if (!user) {
     <h2>Business Reports</h2>
    <p>Understand how your business is performing.</p>
 
-<div className="stats-grid">
+  <div className="stats-grid">
   <div className="stat-card">
     <h3>Total Revenue</h3>
-    <div className="stat-card">
-  <h3>Sales This Month</h3>
-  <h2>KSh {monthlySales.toLocaleString('en-KE')}</h2>
-  <span>Revenue for the current month</span>
-</div>
-    <h2>KSh {totalSales.toLocaleString('en-KE')}</h2>
+    <h2>{currency} {totalSales.toLocaleString()}</h2>
+    <span>Revenue from all sales</span>
   </div>
 
   <div className="stat-card">
-    <h3>Total Expenses</h3>
-    <h2>KSh {totalExpenses.toLocaleString('en-KE')}</h2>
+    <h3>Sales This Month</h3>
+    <h2>{currency} {monthlySales.toLocaleString()}</h2>
+    <span>Revenue for the current month</span>
   </div>
-
+      <div className="stat-card">
+    <h3>Total Expenses</h3>
+    <h2>{currency} {totalExpenses.toLocaleString()}</h2>
+  </div>
   <div className="stat-card">
     <h3>Estimated Profit</h3>
-    <h2>KSh {estimatedProfit.toLocaleString('en-KE')}</h2>
+    <h2>{currency} {estimatedProfit.toLocaleString()}</h2>
   </div>
 
   <div className="stat-card">
@@ -1129,9 +1275,9 @@ if (!user) {
   <div className="stat-card">
     <h3>Average Sale</h3>
     <h2>
-      KSh {sales.length
-        ? Math.round(totalSales / sales.length).toLocaleString('en-KE')
-        : 0}
+      {currency} {sales.length
+  ? Math.round(totalSales / sales.length).toLocaleString()
+  : 0}
     </h2>
   </div>
 
@@ -1180,7 +1326,7 @@ if (!user) {
       {salesByDate.map(day => (
         <div key={day.date} style={{ marginBottom: '15px' }}>
           <p>
-            {day.date} — KSh {day.revenue.toLocaleString('en-KE')}
+            {day.date} — {currency} {day.revenue.toLocaleString()}
           </p>
 
           <div style={{
@@ -1210,7 +1356,14 @@ if (!user) {
                 <h1>Inventory</h1>
                 <p>Manage the products in your shop.</p>
               </div>
-              <div className="profile">M</div>
+              <div className="profile">
+  <img
+    src={profilePhotoUrl || 'https://placehold.co/100x100?text=M'}
+    alt="Profile"
+    className="profile-photo"
+    onClick={() => setProfileMenuOpen(!profileMenuOpen)}
+  />
+</div>
             </header>
 
             <section className="stats">
@@ -1249,7 +1402,7 @@ if (!user) {
                   required
                 />
 
-                <label>Selling Price (KSh)</label>
+                <label>Selling Price ({currency})</label>
                 <input
                   type="number"
                   min="0.01"
@@ -1310,7 +1463,7 @@ if (!user) {
                         <tr key={product.id}>
                           <td>{product.name}</td>
                           <td>
-                            KSh {product.price.toLocaleString('en-KE')}
+                           {currency} {Number(product.price).toLocaleString()}
                           </td>
                           <td>{product.quantity}</td>
                           <td>
@@ -1354,23 +1507,138 @@ if (!user) {
                 <p>Welcome to your MauzoMate {activeSection.toLowerCase()} section.</p>
               </div>
               <div className="profile">
-  <span>👤</span>
-</div>
+                <img
+                  src={profilePhotoUrl || 'https://placehold.co/100x100?text=M'}
+                  alt="Profile"
+                  className="profile-photo"
+                  onClick={() => setProfileMenuOpen(!profileMenuOpen)}
+                />
+
+                {profileMenuOpen && (
+                  <div className="profile-menu">
+                  <button onClick={() => {
+  setActiveSection('Settings');
+  setProfileMenuOpen(false);
+}}>
+  👤 My Profile & Settings
+</button>
+
+<button onClick={() => {
+  fileInputRef.current.click();
+  setProfileMenuOpen(false);
+}}>
+  📷 Change Profile Photo
+</button>
+
+<button onClick={() => {
+  exportData();
+  setProfileMenuOpen(false);
+}}>
+  💾 Download Backup
+</button>
+
+<button onClick={() => {
+  setProfileMenuOpen(false);
+}}>
+  🔒 Account & Security
+</button>
+
+<button onClick={handleLogout}>
+  ↪ Log Out
+</button>  
+                  </div>
+                )}
+              </div>
             </header>
 
-            <section className="panel">
-              <h2>{activeSection} Management</h2>
-              <p className="muted">
-                This section is ready for development.
-              </p>
-              <p>We'll build its features step by step.</p>
-            </section>
+            {activeSection === 'Settings' ? (
+            <section className="panel settings-panel">
+  <h2>Settings</h2>
+  <p>Manage your MauzoMate preferences and business details.</p>
+
+  <h3 className="settings-heading">Appearance</h3>
+<div className="setting-row">
+  <label>Dark Mode</label>
+
+  <button
+    type="button"
+    className={`ios-toggle ${darkMode ? 'active' : ''}`}
+    onClick={() => {
+      const newMode = !darkMode;
+      setDarkMode(newMode);
+      localStorage.setItem('mauzomate-dark-mode', newMode);
+    }}
+    aria-label="Toggle dark mode"
+    aria-pressed={darkMode}
+  >
+    <span></span>
+  </button>
+</div>
+<h3 className="settings-heading">Notifications</h3>
+<div className="setting-row">
+  <label>Notifications</label>
+
+  <button
+    type="button"
+    className={`ios-toggle ${notifications ? 'active' : ''}`}
+    onClick={() => {
+      const newValue = !notifications;
+      setNotifications(newValue);
+      localStorage.setItem('mauzomate-notifications', newValue);
+    }}
+    aria-label="Toggle notifications"
+    aria-pressed={notifications}
+  >
+    <span></span>
+  </button>
+</div>
+<h3 className="settings-heading">Business Information</h3>
+  <label>Business Name</label>
+  <input
+    type="text"
+    placeholder="Enter your business name"
+    value={businessName}
+    onChange={e => {
+      setBusinessName(e.target.value);
+      localStorage.setItem('mauzomate-business-name', e.target.value);
+    }}
+  />
+
+  <label>Business Phone Number</label>
+  <input
+    type="tel"
+    placeholder="Enter business phone number"
+    value={businessPhone}
+    onChange={e => {
+      setBusinessPhone(e.target.value);
+      localStorage.setItem('mauzomate-business-phone', e.target.value);
+    }}
+  />
+
+  <label>Business Currency</label>
+  <select
+    value={currency}
+    onChange={e => {
+      setCurrency(e.target.value);
+      localStorage.setItem('mauzomate-currency', e.target.value);
+    }}
+  >
+    <option value="KES">Kenyan Shilling (KES)</option>
+    <option value="USD">US Dollar (USD)</option>
+    <option value="UGX">Ugandan Shilling (UGX)</option>
+    <option value="TZS">Tanzanian Shilling (TZS)</option>
+  </select>
+  <h3 className="settings-heading">Business Summary</h3>
+  <div className="business-summary">
+  <h3>Business Profile Summary</h3>
+  <p><strong>Business Name:</strong> {businessName || 'Not set'}</p>
+  <p><strong>Phone:</strong> {businessPhone || 'Not set'}</p>
+  <p><strong>Currency:</strong> {currency}</p>
+</div>
+</section>
+            ) : null}
           </>
         )}
-
-        <footer>
-          © 2026 MauzoMate. Made for Kenyan businesses.
-        </footer>
       </main>
     </div>
   );

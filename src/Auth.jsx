@@ -42,6 +42,7 @@ function Auth({ onLogin }) {
 
   return (
     <div className="auth-container">
+    
       <form className="auth-card" onSubmit={handleSubmit}>
         <h1>MauzoMate</h1>
         <p>{isLogin ? 'Welcome back!' : 'Create your business account'}</p>
