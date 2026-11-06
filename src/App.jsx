@@ -326,6 +326,88 @@ setExpenses(previousExpenses => [data, ...previousExpenses]);
   setExpenseName('');
   setExpenseAmount('');
 }
+async function editExpense(expense) {
+  const updatedName = window.prompt(
+    'Expense name:',
+    expense.name
+  );
+
+  if (updatedName === null) return;
+
+  if (!updatedName.trim()) {
+    alert('Enter an expense name.');
+    return;
+  }
+
+  const updatedAmount = window.prompt(
+    'Expense amount:',
+    String(expense.amount)
+  );
+
+  if (updatedAmount === null) return;
+
+  const value = Number(updatedAmount);
+
+  if (!Number.isFinite(value) || value <= 0) {
+    alert('Enter a valid amount.');
+    return;
+  }
+
+  const { data, error } = await supabase
+    .from('expenses')
+    .update({
+      name: updatedName.trim(),
+      amount: value
+    })
+    .eq('id', expense.id)
+    .select()
+    .single();
+
+  if (error) {
+    alert(error.message);
+    return;
+  }
+
+  setExpenses(previousExpenses =>
+    previousExpenses.map(item =>
+      item.id === expense.id
+        ? {
+            ...data,
+            amount: Number(data.amount),
+            date: new Date(
+              `${data.expense_date}T00:00:00`
+            ).toLocaleDateString()
+          }
+        : item
+    )
+  );
+
+  alert('Expense updated successfully.');
+}
+
+async function deleteExpense(expenseId) {
+  const confirmed = window.confirm(
+    'Are you sure you want to delete this expense?'
+  );
+
+  if (!confirmed) return;
+
+  const { error } = await supabase
+    .from('expenses')
+    .delete()
+    .eq('id', expenseId);
+
+  if (error) {
+    alert(error.message);
+    return;
+  }
+
+  setExpenses(previousExpenses =>
+    previousExpenses.filter(expense => expense.id !== expenseId)
+  );
+
+  alert('Expense deleted successfully.');
+}
 async function addCustomer(e) {
   e.preventDefault();
 
@@ -947,6 +1029,7 @@ if (!user) {
                 <th>Description</th>
                 <th>Amount</th>
                 <th>Date</th>
+                <th>Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -955,6 +1038,14 @@ if (!user) {
                   <td>{expense.name}</td>
                   <td>KSh {expense.amount.toLocaleString()}</td>
                   <td>{expense.date}</td>
+                  <td>
+  <button onClick={() => editExpense(expense)}>
+    Edit
+  </button>
+  <button onClick={() => deleteExpense(expense.id)}>
+    Delete
+  </button>
+</td>
                 </tr>
               ))}
             </tbody>
