@@ -16,9 +16,74 @@ import { supabase } from './supabase';
 import { useRef } from 'react';
 function App() {
   const [user, setUser] = useState(null);
+ const [isRecoveryMode, setIsRecoveryMode] = useState(false); 
   const [profilePhotoUrl, setProfilePhotoUrl] = useState('');
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
+  const [newPassword, setNewPassword] = useState('');
+const [confirmPassword, setConfirmPassword] = useState('');
+const [recoveryPassword, setRecoveryPassword] = useState('');
+const [confirmRecoveryPassword, setConfirmRecoveryPassword] = useState('');
 const fileInputRef = useRef(null);
+async function handlePasswordChange() {
+  if (!user) {
+  alert('Your session has expired. Please sign in again.');
+  return;
+}
+  if (!newPassword || !confirmPassword) {
+    alert('Please fill in both password fields.');
+    return;
+  }
+
+  if (newPassword.length < 8) {
+    alert('Password must be at least 8 characters.');
+    return;
+  }
+
+  if (newPassword !== confirmPassword) {
+    alert('Passwords do not match.');
+    return;
+  }
+
+  const { error } = await supabase.auth.updateUser({
+    password: newPassword
+  });
+async function handleRecoveryPasswordChange() {
+  if (recoveryPassword.length < 8) {
+    alert('Password must be at least 8 characters.');
+    return;
+  }
+
+  if (recoveryPassword !== confirmRecoveryPassword) {
+    alert('Passwords do not match.');
+    return;
+  }
+
+  const { error } = await supabase.auth.updateUser({
+    password: recoveryPassword
+  });
+
+  if (error) {
+    alert(error.message);
+    return;
+  }
+
+  setRecoveryPassword('');
+  setConfirmRecoveryPassword('');
+  setIsRecoveryMode(false);
+
+  alert('Password reset successfully! Please sign in with your new password.');
+  await supabase.auth.signOut();
+}
+  if (error) {
+    alert(error.message);
+    return;
+  }
+
+  alert('Password updated successfully!');
+
+  setNewPassword('');
+  setConfirmPassword('');
+}
   async function handleLogout() {
   const { error } = await supabase.auth.signOut();
 
@@ -157,10 +222,14 @@ useEffect(() => {
   });
 
   const { data: { subscription } } =
-    supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null);
-      setAuthLoading(false);
-    });
+    supabase.auth.onAuthStateChange((event, session) => {
+  if (event === 'PASSWORD_RECOVERY') {
+    setIsRecoveryMode(true);
+  }
+
+  setUser(session?.user ?? null);
+  setAuthLoading(false);
+});
 
   return () => subscription.unsubscribe();
 }, []);
@@ -727,6 +796,34 @@ if (authLoading) {
 if (!user) {
   return <Auth onLogin={setUser} />;
 }
+if (isRecoveryMode) {
+  return (
+    <div className="auth-container">
+      <div className="auth-card">
+        <h2>Reset Your Password</h2>
+        <p>Enter your new password below.</p>
+
+        <input
+          type="password"
+          placeholder="New password"
+          value={recoveryPassword}
+          onChange={e => setRecoveryPassword(e.target.value)}
+        />
+
+        <input
+          type="password"
+          placeholder="Confirm new password"
+          value={confirmRecoveryPassword}
+          onChange={e => setConfirmRecoveryPassword(e.target.value)}
+        />
+
+        <button onClick={handleRecoveryPasswordChange}>
+          Update Password
+        </button>
+      </div>
+    </div>
+  );
+}
   return (
     <div className={`app ${darkMode ? 'dark-mode' : ''}`}>
       <aside className="sidebar">
@@ -800,6 +897,7 @@ if (!user) {
 </button>
 
 <button onClick={() => {
+  setActiveSection('Settings');
   setProfileMenuOpen(false);
 }}>
   🔒 Account & Security
@@ -1628,6 +1726,35 @@ if (!user) {
     <option value="UGX">Ugandan Shilling (UGX)</option>
     <option value="TZS">Tanzanian Shilling (TZS)</option>
   </select>
+  <h3 className="settings-heading">Account Security</h3>
+
+<div className="setting-row">
+  <label>New Password</label>
+  <input
+    type="password"
+    placeholder="Enter new password"
+    value={newPassword}
+    onChange={e => setNewPassword(e.target.value)}
+  />
+</div>
+
+<div className="setting-row">
+  <label>Confirm New Password</label>
+  <input
+    type="password"
+    placeholder="Confirm new password"
+    value={confirmPassword}
+    onChange={e => setConfirmPassword(e.target.value)}
+  />
+</div>
+
+<button
+  type="button"
+  className="password-update-btn"
+  onClick={handlePasswordChange}
+>
+  Update Password
+</button>
   <h3 className="settings-heading">Business Summary</h3>
   <div className="business-summary">
   <h3>Business Profile Summary</h3>

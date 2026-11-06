@@ -1080,3 +1080,42 @@ button:hover {
     border-radius: 18px;
   }
 }
+.password-update-btn {
+  background: #16845b;
+  color: #ffffff;
+  border: none;
+  padding: 12px 22px;
+  border-radius: 10px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.password-update-btn:hover {
+  background: #116b49;
+}
+
+/* Dark mode */
+.dark-mode .password-update-btn {
+  background: #287a5c;
+  color: #ffffff;
+}
+
+.dark-mode .password-update-btn:hover {
+  background: #35966f;
+}
+.forgot-password-btn {
+  background: transparent;
+  color: #16845b;
+  border: none;
+  padding: 8px 0;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.forgot-password-btn:hover {
+  text-decoration: underline;
+}
+
+.dark-mode .forgot-password-btn {
+  color: #6ee7b7;
+}

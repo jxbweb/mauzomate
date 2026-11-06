@@ -6,7 +6,7 @@ function Auth({ onLogin }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
-
+const [resetMode, setResetMode] = useState(false);
   async function handleSubmit(e) {
     e.preventDefault();
     setLoading(true);
@@ -39,14 +39,44 @@ function Auth({ onLogin }) {
       setLoading(false);
     }
   }
+async function handlePasswordReset() {
+  if (!email) {
+    alert('Please enter your email address first.');
+    return;
+  }
 
+  setLoading(true);
+
+  try {
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: window.location.origin
+    });
+
+    if (error) throw error;
+
+    alert('Password reset email sent! Please check your inbox.');
+  } catch (error) {
+    alert(error.message);
+  } finally {
+    setLoading(false);
+  }
+}
   return (
     <div className="auth-container">
     
       <form className="auth-card" onSubmit={handleSubmit}>
         <h1>MauzoMate</h1>
         <p>{isLogin ? 'Welcome back!' : 'Create your business account'}</p>
-
+{isLogin && (
+  <button
+    type="button"
+    className="forgot-password-btn"
+    onClick={handlePasswordReset}
+    disabled={loading}
+  >
+    Forgot Password?
+  </button>
+)}
         <input
           type="email"
           placeholder="Email address"
