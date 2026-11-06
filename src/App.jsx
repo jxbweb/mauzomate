@@ -364,6 +364,78 @@ setCustomers(previousCustomers => [
   setCustomerName('');
   setCustomerPhone('');
 }
+async function editCustomer(customer) {
+  const updatedName = window.prompt(
+    'Customer name:',
+    customer.name
+  );
+
+  if (updatedName === null) return;
+
+  if (!updatedName.trim()) {
+    alert('Customer name cannot be empty.');
+    return;
+  }
+
+  const updatedPhone = window.prompt(
+    'Customer phone:',
+    customer.phone || ''
+  );
+
+  if (updatedPhone === null) return;
+
+  const { data, error } = await supabase
+    .from('customers')
+    .update({
+      name: updatedName.trim(),
+      phone: updatedPhone.trim()
+    })
+    .eq('id', customer.id)
+    .select()
+    .single();
+
+  if (error) {
+    alert(error.message);
+    return;
+  }
+
+  setCustomers(previousCustomers =>
+    previousCustomers.map(item =>
+      item.id === customer.id
+        ? {
+            ...data,
+            totalSpent: Number(data.total_spent || 0)
+          }
+        : item
+    )
+  );
+
+  alert('Customer updated successfully.');
+}
+
+async function deleteCustomer(customerId) {
+  const confirmed = window.confirm(
+    'Are you sure you want to delete this customer?'
+  );
+
+  if (!confirmed) return;
+
+  const { error } = await supabase
+    .from('customers')
+    .delete()
+    .eq('id', customerId);
+
+  if (error) {
+    alert(error.message);
+    return;
+  }
+
+  setCustomers(previousCustomers =>
+    previousCustomers.filter(customer => customer.id !== customerId)
+  );
+
+  alert('Customer deleted successfully.');
+}
 async function saveProduct(e) {
   e.preventDefault();
 
@@ -794,6 +866,7 @@ if (!user) {
                 <th>Name</th>
                 <th>Phone</th>
                 <th>Total Spent</th>
+                <th>Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -802,6 +875,14 @@ if (!user) {
                   <td>{customer.name}</td>
                   <td>{customer.phone || 'Not provided'}</td>
                   <td>KSh {customer.totalSpent.toLocaleString('en-KE')}</td>
+                  <td>
+  <button onClick={() => editCustomer(customer)}>
+    Edit
+  </button>
+  <button onClick={() => deleteCustomer(customer.id)}>
+    Delete
+  </button>
+</td>
                 </tr>
               ))}
             </tbody>
