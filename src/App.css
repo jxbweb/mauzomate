@@ -463,3 +463,69 @@ button:hover {
   cursor: pointer;
   font-weight: bold;
 }
+/* MauzoMate mobile improvements */
+
+@media (max-width: 600px) {
+  .topbar {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+
+  .stats {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+
+  .stat-card {
+    width: 100%;
+  }
+
+  .panel {
+    padding: 15px;
+    overflow-x: auto;
+  }
+
+  .inventory-table-wrapper {
+    overflow-x: auto;
+    width: 100%;
+  }
+
+  .inventory-table {
+    min-width: 500px;
+  }
+
+  input,
+  select,
+  textarea,
+  button {
+    max-width: 100%;
+  }
+
+  button {
+    min-height: 40px;
+  }
+
+  .content-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 380px) {
+  .main {
+    padding: 12px;
+  }
+
+  .nav-item {
+    font-size: 10px;
+    padding: 8px;
+  }
+
+  h1 {
+    font-size: 23px;
+  }
+
+  .stat-card h2 {
+    font-size: 21px;
+  }
+}
