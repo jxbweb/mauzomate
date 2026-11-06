@@ -289,6 +289,29 @@ setProducts(previousProducts =>
 setAmount('');
  setQuantitySold('1');
 }
+function exportData() {
+  const backup = {
+    exportDate: new Date().toISOString(),
+    products,
+    customers,
+    sales,
+    expenses
+  };
+
+  const blob = new Blob(
+    [JSON.stringify(backup, null, 2)],
+    { type: 'application/json' }
+  );
+
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+
+  link.href = url;
+  link.download = 'mauzomate-backup.json';
+  link.click();
+
+  URL.revokeObjectURL(url);
+}
 async function addExpense(e) {
   e.preventDefault();
 
@@ -661,6 +684,9 @@ if (!user) {
             </header>
 <button onClick={handleLogout}>
   Logout
+</button>
+<button onClick={exportData}>
+  Download Backup
 </button>
             <section className="welcome">
               <div>
