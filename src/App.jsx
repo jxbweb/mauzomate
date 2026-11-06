@@ -672,7 +672,7 @@ if (!user) {
             <section className="stats">
               <div className="stat-card">
                 <p>Today's Sales</p>
-                <h2>KSh {totalSales.toLocaleString('en-KE')}</h2>
+<h2>KSh {todaySales.toLocaleString('en-KE')}</h2>
                 <span>Sales recorded today</span>
               </div>
 
