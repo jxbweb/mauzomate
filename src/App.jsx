@@ -171,10 +171,25 @@ const currentDate = new Date().toLocaleDateString();
 const todaySales = sales
   .filter(sale => sale.date === currentDate)
   .reduce((total, sale) => total + sale.amount, 0);
+
+const currentMonth = new Date().getMonth();
+const currentYear = new Date().getFullYear();
+
+const monthlySales = sales
+  .filter(sale => {
+    const saleDate = new Date(`${sale.sale_date}T00:00:00`);
+    return (
+      saleDate.getMonth() === currentMonth &&
+      saleDate.getFullYear() === currentYear
+    );
+  })
+  .reduce((total, sale) => total + Number(sale.amount), 0);
+
 const totalExpenses = expenses.reduce(
   (total, expense) => total + expense.amount,
   0
 );
+
 const todayExpenses = expenses
   .filter(expense => expense.date === currentDate)
   .reduce((total, expense) => total + expense.amount, 0);
@@ -1088,6 +1103,11 @@ if (!user) {
 <div className="stats-grid">
   <div className="stat-card">
     <h3>Total Revenue</h3>
+    <div className="stat-card">
+  <h3>Sales This Month</h3>
+  <h2>KSh {monthlySales.toLocaleString('en-KE')}</h2>
+  <span>Revenue for the current month</span>
+</div>
     <h2>KSh {totalSales.toLocaleString('en-KE')}</h2>
   </div>
 
