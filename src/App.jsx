@@ -658,7 +658,21 @@ useEffect(() => {
 
   const { data: { subscription } } =
     supabase.auth.onAuthStateChange((event, session) => {
-      useEffect(() => {
+     
+  const authType = new URLSearchParams(
+  window.location.hash.substring(1)
+).get('type');
+
+if (event === 'PASSWORD_RECOVERY' || authType === 'invite') {
+  setIsRecoveryMode(true);
+}
+  setUser(session?.user ?? null);
+  setAuthLoading(false);
+});
+
+  return () => subscription.unsubscribe();
+}, []);
+useEffect(() => {
   async function checkEmployeeRole() {
     if (!user) {
       setIsEmployee(false);
@@ -679,32 +693,29 @@ useEffect(() => {
       return;
     }
 
-    if (membership) {
-      setIsEmployee(true);
-      setEmployeePermissionsForUser(
-        membership.permissions || {}
-      );
-    } else {
+    const { data: ownedBusiness, error: ownerError } = await supabase
+      .from('businesses')
+      .select('id')
+      .eq('owner_id', user.id)
+      .maybeSingle();
+
+    if (ownerError) {
+      console.error('Owner check error:', ownerError.message);
+      return;
+    }
+
+    if (ownedBusiness) {
       setIsEmployee(false);
       setEmployeePermissionsForUser({});
+      return;
     }
+
+    setIsEmployee(!!membership);
+    setEmployeePermissionsForUser(membership?.permissions || {});
   }
 
   checkEmployeeRole();
 }, [user]);
-  const authType = new URLSearchParams(
-  window.location.hash.substring(1)
-).get('type');
-
-if (event === 'PASSWORD_RECOVERY' || authType === 'invite') {
-  setIsRecoveryMode(true);
-}
-  setUser(session?.user ?? null);
-  setAuthLoading(false);
-});
-
-  return () => subscription.unsubscribe();
-}, []);
 useEffect(() => {
   async function loadProfilePhoto() {
     if (!user) {
