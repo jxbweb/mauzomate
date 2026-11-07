@@ -16,6 +16,8 @@ import { supabase } from './supabase';
 import { useRef } from 'react';
 function App() {
   const [user, setUser] = useState(null);
+  const [isEmployee, setIsEmployee] = useState(false);
+const [employeePermissionsForUser, setEmployeePermissionsForUser] = useState({});
   const [employees, setEmployees] = useState([]);
   const [branches, setBranches] = useState([]);
 const [branchesLoading, setBranchesLoading] = useState(false);
@@ -234,14 +236,29 @@ useEffect(() => {
         .maybeSingle();
 
       if (memberError) throw memberError;
+const { data: ownedBusiness, error: ownerError } = await supabase
+  .from('businesses')
+  .select('id')
+  .eq('owner_id', user.id)
+  .maybeSingle();
 
+if (ownerError) {
+  console.error('Owner check error:', ownerError.message);
+  return;
+}
+
+if (ownedBusiness) {
+  setIsEmployee(false);
+  setEmployeePermissionsForUser({});
+  return;
+}
       // If employee, retrieve the business owner's ID
       if (membership) {
         const { data: business, error: businessError } = await supabase
-          .from('businesses')
-          .select('owner_id')
-          .eq('id', membership.business_id)
-          .single();
+  .from('businesses')
+  .select('owner_id')
+  .eq('id', membership.business_id)
+  .maybeSingle();
 
         if (businessError) throw businessError;
 
@@ -371,7 +388,38 @@ if (data) {
       full_name: employeeName.trim(),
       role: employeeRole,
       branch_id: employeeBranch || null,
-      permissions: employeeRole === 'custom' ? employeePermissions : {}
+      permissions: employeeRole === 'custom'
+  ? employeePermissions
+  : employeeRole === 'manager'
+    ? {
+        dashboard: true,
+        sales: true,
+        inventory: true,
+        customers: true,
+        suppliers: true,
+        expenses: true,
+        reports: true
+      }
+    : employeeRole === 'cashier'
+      ? {
+          dashboard: true,
+          sales: true,
+          customers: true
+        }
+      : employeeRole === 'stock_manager'
+        ? {
+            dashboard: true,
+            inventory: true,
+            suppliers: true
+          }
+        : employeeRole === 'accountant'
+          ? {
+              dashboard: true,
+              sales: true,
+              expenses: true,
+              reports: true
+            }
+          : {}
     })
     .eq('id', data.id)
     .select()
@@ -536,10 +584,13 @@ useEffect(() => {
       .eq('owner_id', user.id)
       .single();
 
-    if (error) {
-      console.error('Business settings loading error:', error.message);
-      return;
-    }
+    if (error || !data) {
+  console.error(
+    'Business settings loading error:',
+    error?.message || 'No business found for this user.'
+  );
+  return;
+}
 
     setBusinessName(data.business_name || '');
     setBusinessType(data.business_type || '');
@@ -599,6 +650,40 @@ useEffect(() => {
 
   const { data: { subscription } } =
     supabase.auth.onAuthStateChange((event, session) => {
+      useEffect(() => {
+  async function checkEmployeeRole() {
+    if (!user) {
+      setIsEmployee(false);
+      setEmployeePermissionsForUser({});
+      return;
+    }
+
+    const { data: membership, error } = await supabase
+      .from('business_members')
+      .select('business_id, role, permissions, status')
+      .eq('user_id', user.id)
+      .eq('status', 'active')
+      .limit(1)
+      .maybeSingle();
+
+    if (error) {
+      console.error('Employee role check error:', error.message);
+      return;
+    }
+
+    if (membership) {
+      setIsEmployee(true);
+      setEmployeePermissionsForUser(
+        membership.permissions || {}
+      );
+    } else {
+      setIsEmployee(false);
+      setEmployeePermissionsForUser({});
+    }
+  }
+
+  checkEmployeeRole();
+}, [user]);
   const authType = new URLSearchParams(
   window.location.hash.substring(1)
 ).get('type');
@@ -838,7 +923,7 @@ async function exportData() {
       .from('businesses')
       .select('*')
       .eq('owner_id', user.id)
-      .single();
+      .maybesingle();
 
     if (settingsError) throw settingsError;
 
@@ -1531,11 +1616,25 @@ return (
         <p className="tagline">YOUR BUSINESS PARTNER</p>
 
         <nav>
-          {menuItems.map(([name, icon]) => (
+          {menuItems
+  .filter(([name]) => {
+    if (!isEmployee) return true;
+
+    const permissionKey = name
+      .toLowerCase()
+      .replace(' ', '_');
+
+    if (name === 'Settings') return true;
+
+    return !!employeePermissionsForUser[permissionKey];
+  })
+  .map(([name, icon]) => (
             <button
               key={name}
               className={`nav-item ${activeSection === name ? 'active' : ''}`}
-              onClick={() => setActiveSection(name)}
+              onClick={() => {
+  setActiveSection(name);
+}}
             >
               {icon} {name}
             </button>
