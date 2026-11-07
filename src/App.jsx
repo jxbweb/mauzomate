@@ -16,6 +16,30 @@ import { supabase } from './supabase';
 import { useRef } from 'react';
 function App() {
   const [user, setUser] = useState(null);
+  const [employees, setEmployees] = useState([]);
+  const [branches, setBranches] = useState([]);
+const [branchesLoading, setBranchesLoading] = useState(false);
+const [branchName, setBranchName] = useState('');
+const [branchAddress, setBranchAddress] = useState('');
+const [branchPhone, setBranchPhone] = useState('');
+const [employeesLoading, setEmployeesLoading] = useState(false);
+const [employeeName, setEmployeeName] = useState('');
+const [employeeEmail, setEmployeeEmail] = useState('');
+const [employeeRole, setEmployeeRole] = useState('cashier');
+const [employeePermissions, setEmployeePermissions] = useState({
+  dashboard: true,
+  sales: false,
+  inventory: false,
+  customers: false,
+  suppliers: false,
+  expenses: false,
+  reports: false,
+  employees: false,
+  branches: false,
+  business_settings: false
+});
+const [employeeBranch, setEmployeeBranch] = useState('');
+const [invitingEmployee, setInvitingEmployee] = useState(false);
  const [isRecoveryMode, setIsRecoveryMode] = useState(false); 
   const [profilePhotoUrl, setProfilePhotoUrl] = useState('');
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
@@ -47,6 +71,16 @@ async function handlePasswordChange() {
   const { error } = await supabase.auth.updateUser({
     password: newPassword
   });
+  if (error) {
+    alert(error.message);
+    return;
+  }
+
+  alert('Password updated successfully!');
+
+  setNewPassword('');
+  setConfirmPassword('');
+}
 async function handleRecoveryPasswordChange() {
   if (recoveryPassword.length < 8) {
     alert('Password must be at least 8 characters.');
@@ -73,16 +107,6 @@ async function handleRecoveryPasswordChange() {
 
   alert('Password reset successfully! Please sign in with your new password.');
   await supabase.auth.signOut();
-}
-  if (error) {
-    alert(error.message);
-    return;
-  }
-
-  alert('Password updated successfully!');
-
-  setNewPassword('');
-  setConfirmPassword('');
 }
   async function handleLogout() {
   const { error } = await supabase.auth.signOut();
@@ -213,6 +237,324 @@ useEffect(() => {
 
   loadCustomers();
 }, [user]);
+useEffect(() => {
+  async function loadSuppliers() {
+    if (!user) return;
+
+    const { data, error } = await supabase
+      .from('suppliers')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      alert(error.message);
+    } else {
+      setSuppliers(data || []);
+    }
+  }
+
+  loadSuppliers();
+}, [user]);
+
+useEffect(() => {
+  async function loadEmployees() {
+    if (!user) {
+      setEmployees([]);
+      return;
+    }
+
+    setEmployeesLoading(true);
+
+    try {
+      const { data: business, error: businessError } = await supabase
+        .from('businesses')
+        .select('id')
+        .eq('owner_id', user.id)
+        .single();
+
+      if (businessError) throw businessError;
+
+      const { data, error } = await supabase
+        .from('business_members')
+        .select('*')
+        .eq('business_id', business.id)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+
+      setEmployees(data || []);
+    } catch (error) {
+      console.error('Employee loading error:', error.message);
+    } finally {
+      setEmployeesLoading(false);
+    }
+  }
+
+  loadEmployees();
+}, [user]);
+
+async function inviteEmployee(e) {
+  e.preventDefault();
+
+  if (!employeeName.trim() || !employeeEmail.trim()) {
+    alert('Enter the employee name and email.');
+    return;
+  }
+
+  if (!user) {
+    alert('Please sign in again.');
+    return;
+  }
+
+  setInvitingEmployee(true);
+
+  try {
+    const { data: business, error: businessError } = await supabase
+      .from('businesses')
+      .select('id')
+      .eq('owner_id', user.id)
+      .single();
+
+    if (businessError) throw businessError;
+
+    let { data, error } = await supabase
+  .from('business_members')
+  .select('*')
+  .eq('business_id', business.id)
+  .eq('email', employeeEmail.trim().toLowerCase())
+  .maybeSingle();
+
+if (error) throw error;
+
+if (data) {
+  if (data.status !== 'pending' || data.user_id) {
+    throw new Error('This email already belongs to an active or linked employee.');
+  }
+
+  const { data: updatedMember, error: updateError } = await supabase
+    .from('business_members')
+    .update({
+      full_name: employeeName.trim(),
+      role: employeeRole,
+      branch_id: employeeBranch || null,
+      permissions: employeeRole === 'custom' ? employeePermissions : {}
+    })
+    .eq('id', data.id)
+    .select()
+    .single();
+
+  if (updateError) throw updateError;
+  data = updatedMember;
+} else {
+  const { data: newMember, error: insertError } = await supabase
+    .from('business_members')
+    .insert({
+      business_id: business.id,
+      full_name: employeeName.trim(),
+      email: employeeEmail.trim().toLowerCase(),
+      role: employeeRole,
+      branch_id: employeeBranch || null,
+      status: 'pending',
+      permissions: employeeRole === 'custom' ? employeePermissions : {}
+    })
+    .select()
+    .single();
+
+  if (insertError) throw insertError;
+  data = newMember;
+}
+
+// Send the actual invitation email
+const { data: invitationResult, error: invitationError } =
+  await supabase.functions.invoke('invite-employee', {
+    body: {
+  email: employeeEmail.trim().toLowerCase()
+}
+  });
+
+if (invitationError) {
+  let details = invitationError.message;
+
+  if (invitationError.context) {
+    try {
+      const response = await invitationError.context.clone().text();
+      if (response) details += ' — ' + response;
+    } catch {}
+  }
+
+  throw new Error(details);
+}
+
+if (invitationResult?.error) {
+  throw new Error(invitationResult.error);
+}
+
+setEmployees(previous => [data, ...previous]);
+    setEmployeeName('');
+    setEmployeeEmail('');
+    setEmployeeRole('cashier');
+setEmployeeBranch('');
+setEmployeePermissions({
+  dashboard: true,
+  sales: false,
+  inventory: false,
+  customers: false,
+  suppliers: false,
+  expenses: false,
+  reports: false,
+  employees: false,
+  branches: false,
+  business_settings: false
+});
+    alert('Employee record created successfully!');
+  } catch (error) {
+    alert('Could not add employee: ' + error.message);
+  } finally {
+    setInvitingEmployee(false);
+  }
+}
+
+useEffect(() => {
+  async function loadBranches() {
+    if (!user) {
+      setBranches([]);
+      return;
+    }
+
+    setBranchesLoading(true);
+
+    try {
+      const { data: business, error: businessError } = await supabase
+        .from('businesses')
+        .select('id')
+        .eq('owner_id', user.id)
+        .single();
+
+      if (businessError) throw businessError;
+
+      const { data, error } = await supabase
+        .from('branches')
+        .select('*')
+        .eq('business_id', business.id)
+        .order('created_at', { ascending: true });
+
+      if (error) throw error;
+
+      setBranches(data || []);
+    } catch (error) {
+      console.error('Branch loading error:', error.message);
+    } finally {
+      setBranchesLoading(false);
+    }
+  }
+
+  loadBranches();
+}, [user]);
+
+async function addBranch(e) {
+  e.preventDefault();
+
+  if (!user || !branchName.trim()) {
+    alert('Enter a branch name.');
+    return;
+  }
+
+  try {
+    const { data: business, error: businessError } = await supabase
+      .from('businesses')
+      .select('id')
+      .eq('owner_id', user.id)
+      .single();
+
+    if (businessError) throw businessError;
+
+    const { data, error } = await supabase
+      .from('branches')
+      .insert({
+        business_id: business.id,
+        branch_name: branchName.trim(),
+        address: branchAddress.trim(),
+        phone: branchPhone.trim(),
+        is_default: false
+      })
+      .select()
+      .single();
+
+    if (error) throw error;
+
+    setBranches(previous => [...previous, data]);
+    setBranchName('');
+    setBranchAddress('');
+    setBranchPhone('');
+
+    alert('Branch created successfully!');
+  } catch (error) {
+    alert('Could not create branch: ' + error.message);
+  }
+}
+useEffect(() => {
+  async function loadBusinessSettings() {
+    if (!user) return;
+
+    const { data, error } = await supabase
+      .from('businesses')
+      .select('*')
+      .eq('owner_id', user.id)
+      .single();
+
+    if (error) {
+      console.error('Business settings loading error:', error.message);
+      return;
+    }
+
+    setBusinessName(data.business_name || '');
+    setBusinessType(data.business_type || '');
+    setBusinessPhone(data.phone || '');
+    setBusinessEmail(data.email || '');
+    setBusinessAddress(data.address || '');
+    setTaxPin(data.tax_pin || '');
+  }
+
+  loadBusinessSettings();
+}, [user]);
+async function saveBusinessSettings(e) {
+  e.preventDefault();
+
+  if (!user) {
+    alert('Please sign in again.');
+    return;
+  }
+
+  if (!businessName.trim()) {
+    alert('Enter your business name.');
+    return;
+  }
+
+  setBusinessSaving(true);
+
+  try {
+    const { error } = await supabase
+      .from('businesses')
+      .update({
+        business_name: businessName.trim(),
+        business_type: businessType,
+        phone: businessPhone.trim(),
+        email: businessEmail.trim(),
+        address: businessAddress.trim(),
+        tax_pin: taxPin.trim(),
+        updated_at: new Date().toISOString()
+      })
+      .eq('owner_id', user.id);
+
+    if (error) throw error;
+
+    alert('Business settings saved successfully!');
+  } catch (error) {
+    alert('Could not save business settings: ' + error.message);
+  } finally {
+    setBusinessSaving(false);
+  }
+}
 const [authLoading, setAuthLoading] = useState(true);
 const [photoLoading, setPhotoLoading] = useState(false);
 useEffect(() => {
@@ -223,10 +565,13 @@ useEffect(() => {
 
   const { data: { subscription } } =
     supabase.auth.onAuthStateChange((event, session) => {
-  if (event === 'PASSWORD_RECOVERY') {
-    setIsRecoveryMode(true);
-  }
+  const authType = new URLSearchParams(
+  window.location.hash.substring(1)
+).get('type');
 
+if (event === 'PASSWORD_RECOVERY' || authType === 'invite') {
+  setIsRecoveryMode(true);
+}
   setUser(session?.user ?? null);
   setAuthLoading(false);
 });
@@ -263,6 +608,11 @@ const [expenseAmount, setExpenseAmount] = useState('');const [businessName, setB
 const [businessPhone, setBusinessPhone] = useState(
   () => localStorage.getItem('mauzomate-business-phone') || ''
 );
+const [businessType, setBusinessType] = useState('');
+const [businessEmail, setBusinessEmail] = useState('');
+const [businessAddress, setBusinessAddress] = useState('');
+const [taxPin, setTaxPin] = useState('');
+const [businessSaving, setBusinessSaving] = useState(false);
 const [currency, setCurrency] = useState(
   () => localStorage.getItem('mauzomate-currency') || 'KES'
 );
@@ -273,7 +623,12 @@ const [notifications, setNotifications] = useState(
   () => localStorage.getItem('mauzomate-notifications') === 'true'
 );
 const [customers, setCustomers] = useState([]);
+const [suppliers, setSuppliers] = useState([]);
 const [customerName, setCustomerName] = useState('');
+const [supplierName, setSupplierName] = useState('');
+const [supplierPhone, setSupplierPhone] = useState('');
+const [supplierEmail, setSupplierEmail] = useState('');
+const [supplierAddress, setSupplierAddress] = useState('');
 const [customerPhone, setCustomerPhone] = useState('');
 const [selectedCustomerId, setSelectedCustomerId] = useState('');
   // Inventory data
@@ -330,10 +685,10 @@ const todayExpenses = expenses
 const todayProfit = todaySales - todayExpenses;
 const estimatedProfit = totalSales - totalExpenses;
 
-
+const [lowStockThreshold, setLowStockThreshold] = useState(5);
   const lowStockProducts = products.filter(
-    product => product.quantity <= 5
-  );
+  product => Number(product.quantity) <= lowStockThreshold
+);
 const bestSellingProducts = products
   .map(product => ({
     ...product,
@@ -579,6 +934,40 @@ async function deleteExpense(expenseId) {
 
   alert('Expense deleted successfully.');
 }
+
+async function addSupplier(e) {
+  e.preventDefault();
+
+  if (!supplierName.trim()) {
+    alert('Enter a supplier name.');
+    return;
+  }
+
+  const { data, error } = await supabase
+    .from('suppliers')
+    .insert({
+      name: supplierName.trim(),
+      phone: supplierPhone.trim(),
+      email: supplierEmail.trim(),
+      address: supplierAddress.trim()
+    })
+    .select()
+    .single();
+
+  if (error) {
+    alert(error.message);
+    return;
+  }
+
+  setSuppliers(previous => [data, ...previous]);
+
+  setSupplierName('');
+  setSupplierPhone('');
+  setSupplierEmail('');
+  setSupplierAddress('');
+
+  alert('Supplier added successfully!');
+}
 async function addCustomer(e) {
   e.preventDefault();
 
@@ -752,7 +1141,42 @@ function editProduct(product) {
   setProductPrice(String(product.price));
   setProductQuantity(String(product.quantity));
 }
+async function restockProduct(product) {
+  const input = window.prompt(
+    `How many units of ${product.name} are you adding?`
+  );
 
+  if (input === null) return;
+
+  const amount = Number(input);
+
+  if (!Number.isInteger(amount) || amount <= 0) {
+    alert('Please enter a valid positive whole number.');
+    return;
+  }
+
+  const newQuantity = Number(product.quantity) + amount;
+
+  const { data, error } = await supabase
+    .from('products')
+    .update({ quantity: newQuantity })
+    .eq('id', product.id)
+    .select()
+    .single();
+
+  if (error) {
+    alert(error.message);
+    return;
+  }
+
+  setProducts(previous =>
+    previous.map(item =>
+      item.id === product.id ? data : item
+    )
+  );
+
+  alert('Stock updated successfully!');
+}
 async function deleteProduct(id) {
  if (window.confirm('Are you sure you want to delete this product?')) {
   const { error } = await supabase
@@ -781,27 +1205,28 @@ function clearProductForm() {
 }
 
   const menuItems = [
-    ['Dashboard', '▦'],
-    ['Sales', '🛒'],
-    ['Inventory', '📦'],
-    ['Customers', '👥'],
-    ['Expenses', '💰'],
-    ['Reports', '📊'],
-    ['Settings', '⚙️']
-  ];
+  ['Dashboard', '▦'],
+  ['Sales', '🛒'],
+  ['Inventory', '📦'],
+  ['Customers', '👥'],
+  ['Suppliers', '🏢'],
+  ['Expenses', '💰'],
+  ['Reports', '📊'],
+  ['Employees', '👤'],
+  ['Branches', '🏬'],
+  ['Business Settings', '⚙️'],
+  ['Settings', '🔧']
+];
 if (authLoading) {
   return <p>Loading MauzoMate...</p>;
 }
 
-if (!user) {
-  return <Auth onLogin={setUser} />;
-}
 if (isRecoveryMode) {
   return (
     <div className="auth-container">
       <div className="auth-card">
-        <h2>Reset Your Password</h2>
-        <p>Enter your new password below.</p>
+        <h2>Set Your Password</h2>
+        <p>Create a password for your MauzoMate employee account.</p>
 
         <input
           type="password"
@@ -818,14 +1243,19 @@ if (isRecoveryMode) {
         />
 
         <button onClick={handleRecoveryPasswordChange}>
-          Update Password
+          Set Password
         </button>
       </div>
     </div>
   );
 }
-  return (
-    <div className={`app ${darkMode ? 'dark-mode' : ''}`}>
+
+if (!user) {
+  return <Auth onLogin={setUser} />;
+}
+
+return (
+  <div className={`app ${darkMode ? 'dark-mode' : ''}`}>
       <aside className="sidebar">
         <h2 className="logo">Mauzo<span>Mate</span></h2>
         <p className="tagline">YOUR BUSINESS PARTNER</p>
@@ -1021,6 +1451,15 @@ if (isRecoveryMode) {
             </section>
                    <section className="panel">
   <h2>Low Stock Alerts</h2>
+  <div className="setting-row">
+  <label>Alert me when stock reaches:</label>
+  <input
+    type="number"
+    min="0"
+    value={lowStockThreshold}
+    onChange={e => setLowStockThreshold(Number(e.target.value))}
+  />
+</div>
   <p className="muted">Products that need restocking.</p>
 
   {lowStockProducts.length === 0 ? (
@@ -1031,8 +1470,9 @@ if (isRecoveryMode) {
         <thead>
           <tr>
             <th>Product</th>
-            <th>Remaining Stock</th>
-            <th>Status</th>
+<th>Remaining Stock</th>
+<th>Status</th>
+<th>Action</th>
           </tr>
         </thead>
         <tbody>
@@ -1040,7 +1480,29 @@ if (isRecoveryMode) {
             <tr key={product.id}>
               <td>{product.name}</td>
               <td>{product.quantity}</td>
-              <td>Low Stock</td>
+            <td>
+  <span className={
+    Number(product.quantity) === 0
+      ? 'stock-status out-of-stock'
+      : Number(product.quantity) <= 2
+      ? 'stock-status critical-stock'
+      : 'stock-status low-stock'
+  }>
+    {Number(product.quantity) === 0
+      ? 'Out of Stock'
+      : Number(product.quantity) <= 2
+      ? 'Critical Stock'
+      : 'Low Stock'}
+  </span>
+</td>
+<td>
+  <button
+    type="button"
+    onClick={() => restockProduct(product)}
+  >
+    Restock
+  </button>
+</td>
             </tr>
           ))}
         </tbody>
@@ -1080,7 +1542,8 @@ if (isRecoveryMode) {
       </LineChart>
     </ResponsiveContainer>
   )}
-</section> </>
+                        </section>
+          </>
         ) : activeSection === 'Sales' ? (
           <>
             <header className="topbar">
@@ -1246,6 +1709,79 @@ if (isRecoveryMode) {
         </div>
       )}
     </div>
+  </div>
+  ) : activeSection === 'Suppliers' ? (
+  <div className="page-content">
+    <h2>Supplier Management</h2>
+    <p>Manage your business suppliers.</p>
+    <div className="form-card">
+  <h3>Add New Supplier</h3>
+
+<form onSubmit={addSupplier}>
+  <label>Supplier Name</label>
+  <input
+    type="text"
+    placeholder="Enter supplier name"
+    value={supplierName}
+    onChange={e => setSupplierName(e.target.value)}
+    required
+  />
+
+  <label>Phone Number</label>
+  <input
+    type="tel"
+    placeholder="Enter supplier phone number"
+    value={supplierPhone}
+    onChange={e => setSupplierPhone(e.target.value)}
+  />
+
+  <label>Email Address</label>
+  <input
+    type="email"
+    placeholder="Enter supplier email"
+    value={supplierEmail}
+    onChange={e => setSupplierEmail(e.target.value)}
+  />
+
+  <label>Supplier Address</label>
+  <textarea
+    placeholder="Enter supplier address"
+    value={supplierAddress}
+    onChange={e => setSupplierAddress(e.target.value)}
+  />
+
+  <button type="submit">+ Add Supplier</button>
+</form>
+</div>
+
+<div className="table-card">
+  <h3>Supplier List</h3>
+
+  {suppliers.length === 0 ? (
+    <p>No suppliers added yet.</p>
+  ) : (
+    <table className="inventory-table">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Phone</th>
+          <th>Email</th>
+          <th>Address</th>
+        </tr>
+      </thead>
+      <tbody>
+        {suppliers.map(supplier => (
+          <tr key={supplier.id}>
+            <td>{supplier.name}</td>
+            <td>{supplier.phone}</td>
+            <td>{supplier.email}</td>
+            <td>{supplier.address}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  )}
+</div>
   </div>
 ) : activeSection === 'Expenses' ? (
   <div className="page-content">
@@ -1649,121 +2185,408 @@ if (isRecoveryMode) {
               </div>
             </header>
 
-            {activeSection === 'Settings' ? (
-            <section className="panel settings-panel">
-  <h2>Settings</h2>
-  <p>Manage your MauzoMate preferences and business details.</p>
+          {activeSection === 'Employees' ? (
+  <section className="panel">
+    <h2>Employee Management</h2>
+    <p>Manage your business team and employee access.</p>
+<div className="form-card">
+  <h3>Invite Employee</h3>
 
-  <h3 className="settings-heading">Appearance</h3>
-<div className="setting-row">
-  <label>Dark Mode</label>
+  <form onSubmit={inviteEmployee}>
+    <label>Full Name</label>
+    <input
+      type="text"
+      placeholder="Employee full name"
+      value={employeeName}
+      onChange={e => setEmployeeName(e.target.value)}
+      required
+    />
 
-  <button
-    type="button"
-    className={`ios-toggle ${darkMode ? 'active' : ''}`}
-    onClick={() => {
-      const newMode = !darkMode;
-      setDarkMode(newMode);
-      localStorage.setItem('mauzomate-dark-mode', newMode);
-    }}
-    aria-label="Toggle dark mode"
-    aria-pressed={darkMode}
-  >
-    <span></span>
-  </button>
-</div>
-<h3 className="settings-heading">Notifications</h3>
-<div className="setting-row">
-  <label>Notifications</label>
+    <label>Email Address</label>
+    <input
+      type="email"
+      placeholder="Employee email address"
+      value={employeeEmail}
+      onChange={e => setEmployeeEmail(e.target.value)}
+      required
+    />
 
-  <button
-    type="button"
-    className={`ios-toggle ${notifications ? 'active' : ''}`}
-    onClick={() => {
-      const newValue = !notifications;
-      setNotifications(newValue);
-      localStorage.setItem('mauzomate-notifications', newValue);
-    }}
-    aria-label="Toggle notifications"
-    aria-pressed={notifications}
-  >
-    <span></span>
-  </button>
-</div>
-<h3 className="settings-heading">Business Information</h3>
-  <label>Business Name</label>
-  <input
-    type="text"
-    placeholder="Enter your business name"
-    value={businessName}
-    onChange={e => {
-      setBusinessName(e.target.value);
-      localStorage.setItem('mauzomate-business-name', e.target.value);
-    }}
-  />
-
-  <label>Business Phone Number</label>
-  <input
-    type="tel"
-    placeholder="Enter business phone number"
-    value={businessPhone}
-    onChange={e => {
-      setBusinessPhone(e.target.value);
-      localStorage.setItem('mauzomate-business-phone', e.target.value);
-    }}
-  />
-
-  <label>Business Currency</label>
-  <select
-    value={currency}
-    onChange={e => {
-      setCurrency(e.target.value);
-      localStorage.setItem('mauzomate-currency', e.target.value);
-    }}
-  >
-    <option value="KES">Kenyan Shilling (KES)</option>
-    <option value="USD">US Dollar (USD)</option>
-    <option value="UGX">Ugandan Shilling (UGX)</option>
-    <option value="TZS">Tanzanian Shilling (TZS)</option>
-  </select>
-  <h3 className="settings-heading">Account Security</h3>
-
-<div className="setting-row">
-  <label>New Password</label>
-  <input
-    type="password"
-    placeholder="Enter new password"
-    value={newPassword}
-    onChange={e => setNewPassword(e.target.value)}
-  />
-</div>
-
-<div className="setting-row">
-  <label>Confirm New Password</label>
-  <input
-    type="password"
-    placeholder="Confirm new password"
-    value={confirmPassword}
-    onChange={e => setConfirmPassword(e.target.value)}
-  />
-</div>
-
-<button
-  type="button"
-  className="password-update-btn"
-  onClick={handlePasswordChange}
+    <label>Employee Role</label>
+    <select
+      value={employeeRole}
+      onChange={e => setEmployeeRole(e.target.value)}
+    >
+      <option value="manager">Manager</option>
+      <option value="cashier">Cashier</option>
+      <option value="stock_manager">Stock Manager</option>
+      <option value="accountant">Accountant</option>
+      <option value="custom">Custom Permissions</option>
+    </select>
+<label>Assign Branch</label>
+<select
+  value={employeeBranch}
+  onChange={e => setEmployeeBranch(e.target.value)}
 >
-  Update Password
-</button>
-  <h3 className="settings-heading">Business Summary</h3>
-  <div className="business-summary">
-  <h3>Business Profile Summary</h3>
-  <p><strong>Business Name:</strong> {businessName || 'Not set'}</p>
-  <p><strong>Phone:</strong> {businessPhone || 'Not set'}</p>
-  <p><strong>Currency:</strong> {currency}</p>
+  <option value="">All branches</option>
+  {branches.map(branch => (
+    <option key={branch.id} value={branch.id}>
+      {branch.branch_name}
+    </option>
+  ))}
+</select>
+{employeeRole === 'custom' && (
+  <div className="form-card">
+    <h3>Custom Employee Permissions</h3>
+    <p>Select the sections this employee can access.</p>
+
+    {[
+      ['dashboard', 'Dashboard'],
+      ['sales', 'Sales'],
+      ['inventory', 'Inventory'],
+      ['customers', 'Customers'],
+      ['suppliers', 'Suppliers'],
+      ['expenses', 'Expenses'],
+      ['reports', 'Reports'],
+      ['employees', 'Employees'],
+      ['branches', 'Branches'],
+      ['business_settings', 'Business Settings']
+    ].map(([key, label]) => (
+      <label key={key}>
+        <input
+          type="checkbox"
+          checked={!!employeePermissions[key]}
+          onChange={e =>
+            setEmployeePermissions(previous => ({
+              ...previous,
+              [key]: e.target.checked
+            }))
+          }
+        />
+        {label}
+      </label>
+    ))}
+  </div>
+)}
+    <button type="submit" disabled={invitingEmployee}>
+      {invitingEmployee ? 'Preparing invitation...' : 'Invite Employee'}
+    </button>
+  </form>
 </div>
-</section>
-            ) : null}
+    <div className="form-card">
+      <h3>Team Members</h3>
+
+      {employeesLoading ? (
+        <p>Loading employees...</p>
+      ) : employees.filter(employee => employee.role !== 'owner').length === 0 ? (
+        <p>No employees added yet.</p>
+      ) : (
+        <div className="inventory-table-wrapper">
+          <table className="inventory-table">
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Email</th>
+                <th>Role</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {employees
+                .filter(employee => employee.role !== 'owner')
+                .map(employee => (
+                  <tr key={employee.id}>
+                    <td>{employee.full_name || 'Not provided'}</td>
+                    <td>{employee.email}</td>
+                    <td>{employee.role.replace('_', ' ')}</td>
+                    <td>{employee.status}</td>
+                  </tr>
+                ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+
+    <div className="form-card">
+      <h3>Employee Roles</h3>
+      <ul>
+        <li>Manager</li>
+        <li>Cashier</li>
+        <li>Stock Manager</li>
+        <li>Accountant</li>
+        <li>Custom Permissions</li>
+      </ul>
+    </div>
+  </section>
+) : activeSection === 'Branches' ? (
+  <section className="panel">
+    <h2>Branch Management</h2>
+    <p>Manage your business locations.</p>
+
+    <div className="form-card">
+      <h3>Add New Branch</h3>
+
+      <form onSubmit={addBranch}>
+        <label>Branch Name</label>
+        <input
+          type="text"
+          placeholder="Enter branch name"
+          value={branchName}
+          onChange={e => setBranchName(e.target.value)}
+          required
+        />
+
+        <label>Branch Address</label>
+        <input
+          type="text"
+          placeholder="Enter branch address"
+          value={branchAddress}
+          onChange={e => setBranchAddress(e.target.value)}
+        />
+
+        <label>Phone Number</label>
+        <input
+          type="tel"
+          placeholder="Enter branch phone"
+          value={branchPhone}
+          onChange={e => setBranchPhone(e.target.value)}
+        />
+
+        <button type="submit">+ Add Branch</button>
+      </form>
+    </div>
+
+    <div className="form-card">
+      <h3>Your Branches</h3>
+
+      {branchesLoading ? (
+        <p>Loading branches...</p>
+      ) : branches.length === 0 ? (
+        <p>No branches found.</p>
+      ) : (
+        <div className="inventory-table-wrapper">
+          <table className="inventory-table">
+            <thead>
+              <tr>
+                <th>Branch</th>
+                <th>Address</th>
+                <th>Phone</th>
+                <th>Type</th>
+              </tr>
+            </thead>
+            <tbody>
+              {branches.map(branch => (
+                <tr key={branch.id}>
+                  <td>{branch.branch_name}</td>
+                  <td>{branch.address || 'Not provided'}</td>
+                  <td>{branch.phone || 'Not provided'}</td>
+                  <td>
+                    {branch.is_default ? 'Main Branch' : 'Branch'}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  </section>
+
+) : activeSection === 'Business Settings' ? (
+  <section className="panel">
+    <h2>Business Settings</h2>
+    <p>Manage your business identity and contact information.</p>
+
+    <div className="form-card">
+      <h3>Business Profile</h3>
+
+      <form onSubmit={saveBusinessSettings}>
+        <label>Business Name</label>
+        <input
+          type="text"
+          placeholder="Enter business name"
+          value={businessName}
+          onChange={e => setBusinessName(e.target.value)}
+          required
+        />
+
+        <label>Business Type</label>
+        <select
+          value={businessType}
+          onChange={e => setBusinessType(e.target.value)}
+        >
+          <option value="">Select business type</option>
+          <option value="Retail Shop">Retail Shop</option>
+          <option value="Supermarket">Supermarket</option>
+          <option value="Wholesale">Wholesale</option>
+          <option value="Pharmacy">Pharmacy</option>
+          <option value="Hardware">Hardware</option>
+          <option value="Restaurant">Restaurant</option>
+          <option value="Other">Other</option>
+        </select>
+
+        <label>Phone Number</label>
+        <input
+          type="tel"
+          placeholder="Business phone number"
+          value={businessPhone}
+          onChange={e => setBusinessPhone(e.target.value)}
+        />
+
+        <label>Business Email</label>
+        <input
+          type="email"
+          placeholder="Business email"
+          value={businessEmail}
+          onChange={e => setBusinessEmail(e.target.value)}
+        />
+
+        <label>Business Address</label>
+        <input
+          type="text"
+          placeholder="Business physical address"
+          value={businessAddress}
+          onChange={e => setBusinessAddress(e.target.value)}
+        />
+
+        <h3>Tax Information</h3>
+
+        <label>KRA PIN</label>
+        <input
+          type="text"
+          placeholder="Enter KRA PIN"
+          value={taxPin}
+          onChange={e => setTaxPin(e.target.value)}
+        />
+
+        <button type="submit" disabled={businessSaving}>
+          {businessSaving ? 'Saving...' : 'Save Business Settings'}
+        </button>
+      </form>
+    </div>
+  </section>
+
+) : activeSection === 'Settings' ? (
+            <section className="panel settings-panel">
+              <h2>Settings</h2>
+              <p>Manage your MauzoMate preferences and business details.</p>
+
+              <h3 className="settings-heading">Appearance</h3>
+              <div className="setting-row">
+                <label>Dark Mode</label>
+                <button
+                  type="button"
+                  className={`ios-toggle ${darkMode ? 'active' : ''}`}
+                  onClick={() => {
+                    const newMode = !darkMode;
+                    setDarkMode(newMode);
+                    localStorage.setItem('mauzomate-dark-mode', newMode);
+                  }}
+                  aria-label="Toggle dark mode"
+                  aria-pressed={darkMode}
+                >
+                  <span></span>
+                </button>
+              </div>
+
+              <h3 className="settings-heading">Notifications</h3>
+              <div className="setting-row">
+                <label>Notifications</label>
+                <button
+                  type="button"
+                  className={`ios-toggle ${notifications ? 'active' : ''}`}
+                  onClick={() => {
+                    const newValue = !notifications;
+                    setNotifications(newValue);
+                    localStorage.setItem('mauzomate-notifications', newValue);
+                  }}
+                  aria-label="Toggle notifications"
+                  aria-pressed={notifications}
+                >
+                  <span></span>
+                </button>
+              </div>
+
+              <h3 className="settings-heading">Business Information</h3>
+              <label>Business Name</label>
+              <input
+                type="text"
+                placeholder="Enter your business name"
+                value={businessName}
+                onChange={e => {
+                  setBusinessName(e.target.value);
+                  localStorage.setItem('mauzomate-business-name', e.target.value);
+                }}
+              />
+
+              <label>Business Phone Number</label>
+              <input
+                type="tel"
+                placeholder="Enter business phone number"
+                value={businessPhone}
+                onChange={e => {
+                  setBusinessPhone(e.target.value);
+                  localStorage.setItem('mauzomate-business-phone', e.target.value);
+                }}
+              />
+
+              <label>Business Currency</label>
+              <select
+                value={currency}
+                onChange={e => {
+                  setCurrency(e.target.value);
+                  localStorage.setItem('mauzomate-currency', e.target.value);
+                }}
+              >
+                <option value="KES">Kenyan Shilling (KES)</option>
+                <option value="USD">US Dollar (USD)</option>
+                <option value="UGX">Ugandan Shilling (UGX)</option>
+                <option value="TZS">Tanzanian Shilling (TZS)</option>
+              </select>
+
+              <h3 className="settings-heading">Account Security</h3>
+              <div className="setting-row">
+                <label>New Password</label>
+                <input
+                  type="password"
+                  placeholder="Enter new password"
+                  value={newPassword}
+                  onChange={e => setNewPassword(e.target.value)}
+                />
+              </div>
+
+              <div className="setting-row">
+                <label>Confirm New Password</label>
+                <input
+                  type="password"
+                  placeholder="Confirm new password"
+                  value={confirmPassword}
+                  onChange={e => setConfirmPassword(e.target.value)}
+                />
+              </div>
+
+              <button
+                type="button"
+                className="password-update-btn"
+                onClick={handlePasswordChange}
+              >
+                Update Password
+              </button>
+
+              <h3 className="settings-heading">Business Summary</h3>
+              <div className="business-summary">
+                <h3>Business Profile Summary</h3>
+                <p><strong>Business Name:</strong> {businessName || 'Not set'}</p>
+                <p><strong>Phone:</strong> {businessPhone || 'Not set'}</p>
+                <p><strong>Currency:</strong> {currency}</p>
+                <h3>Business Profile Summary</h3>
+                <p><strong>Business Name:</strong> {businessName || 'Not set'}</p>
+                <p><strong>Phone:</strong> {businessPhone || 'Not set'}</p>
+                <p><strong>Currency:</strong> {currency}</p>
+              </div>
+            </section>
+
+          ) : null}
           </>
         )}
       </main>

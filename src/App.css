@@ -16,6 +16,8 @@ body {
 
 .sidebar {
   width: 245px;
+  height: 100vh;
+  height: 100dvh;
   background: #102b25;
   color: white;
   position: fixed;
@@ -23,6 +25,9 @@ body {
   padding: 30px 20px;
   display: flex;
   flex-direction: column;
+  overflow-y: auto;
+  overflow-x: hidden;
+  box-sizing: border-box;
 }
 
 .logo {
@@ -1118,4 +1123,62 @@ button:hover {
 
 .dark-mode .forgot-password-btn {
   color: #6ee7b7;
+}
+.stock-status {
+  display: inline-block;
+  padding: 5px 10px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.out-of-stock {
+  background: #fee2e2;
+  color: #b91c1c;
+}
+/* Dark mode stock status colours */
+.dark-mode .out-of-stock {
+  background: #7f1d1d;
+  color: #fecaca;
+}
+
+.dark-mode .critical-stock {
+  background: #7c2d12;
+  color: #fed7aa;
+}
+
+.dark-mode .low-stock {
+  background: #713f12;
+  color: #fef08a;
+}
+.critical-stock {
+  background: #ffedd5;
+  color: #c2410c;
+}
+
+.low-stock {
+  background: #fef3c7;
+  color: #92400e;
+}
+/* Keep Restock buttons consistent in dark mode */
+.dark-mode .inventory-table button {
+  background: #16845b;
+  color: #ffffff;
+  border: none;
+}
+
+.dark-mode .inventory-table button:hover {
+  background: #116b49;
+}
+.form-card form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.form-card input,
+.form-card textarea {
+  width: 100%;
+  box-sizing: border-box;
+  margin-bottom: 10px;
 }
