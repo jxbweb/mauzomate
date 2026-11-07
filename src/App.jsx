@@ -260,9 +260,17 @@ if (ownedBusiness) {
   .eq('id', membership.business_id)
   .maybeSingle();
 
-        if (businessError) throw businessError;
+       if (businessError) throw businessError;
 
-        ownerId = business.owner_id;
+if (!business) {
+  throw new Error('The employee business record could not be found.');
+}
+
+ownerId = business.owner_id;
+
+if (!ownerId) {
+  throw new Error('The business owner ID is missing.');
+}
       }
 
       const { data, error } = await supabase
