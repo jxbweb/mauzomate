@@ -17,6 +17,7 @@ import { useRef } from 'react';
 function App() {
   const [user, setUser] = useState(null);
   const [isEmployee, setIsEmployee] = useState(false);
+  const [roleLoading, setRoleLoading] = useState(true);
 const [employeePermissionsForUser, setEmployeePermissionsForUser] = useState({});
   const [employees, setEmployees] = useState([]);
   const [branches, setBranches] = useState([]);
@@ -677,41 +678,49 @@ useEffect(() => {
     if (!user) {
       setIsEmployee(false);
       setEmployeePermissionsForUser({});
+      setRoleLoading(false);
       return;
     }
 
-    const { data: membership, error } = await supabase
-      .from('business_members')
-      .select('business_id, role, permissions, status')
-      .eq('user_id', user.id)
-      .eq('status', 'active')
-      .limit(1)
-      .maybeSingle();
+    setRoleLoading(true);
 
-    if (error) {
+    try {
+      const { data: membership, error } = await supabase
+        .from('business_members')
+        .select('business_id, role, permissions, status')
+        .eq('user_id', user.id)
+        .eq('status', 'active')
+        .limit(1)
+        .maybeSingle();
+
+      if (error) throw error;
+
+      const { data: ownedBusiness, error: ownerError } = await supabase
+        .from('businesses')
+        .select('id')
+        .eq('owner_id', user.id)
+        .maybeSingle();
+
+      if (ownerError) throw ownerError;
+
+      if (ownedBusiness) {
+        setIsEmployee(false);
+        setEmployeePermissionsForUser({});
+        return;
+      }
+
+      setIsEmployee(!!membership);
+      setEmployeePermissionsForUser(
+        membership?.permissions || {}
+      );
+
+    } catch (error) {
       console.error('Employee role check error:', error.message);
-      return;
-    }
-
-    const { data: ownedBusiness, error: ownerError } = await supabase
-      .from('businesses')
-      .select('id')
-      .eq('owner_id', user.id)
-      .maybeSingle();
-
-    if (ownerError) {
-      console.error('Owner check error:', ownerError.message);
-      return;
-    }
-
-    if (ownedBusiness) {
       setIsEmployee(false);
       setEmployeePermissionsForUser({});
-      return;
+    } finally {
+      setRoleLoading(false);
     }
-
-    setIsEmployee(!!membership);
-    setEmployeePermissionsForUser(membership?.permissions || {});
   }
 
   checkEmployeeRole();
@@ -1635,30 +1644,34 @@ return (
         <p className="tagline">YOUR BUSINESS PARTNER</p>
 
         <nav>
-          {menuItems
-  .filter(([name]) => {
-    if (!isEmployee) return true;
+  {roleLoading ? (
+    <p>Loading permissions...</p>
+  ) : (
+    menuItems
+      .filter(([name]) => {
+        if (!isEmployee) return true;
 
-    const permissionKey = name
-      .toLowerCase()
-      .replace(' ', '_');
+        const permissionKey = name
+          .toLowerCase()
+          .replace(' ', '_');
 
-    if (name === 'Settings') return true;
+        if (name === 'Settings') return true;
 
-    return !!employeePermissionsForUser[permissionKey];
-  })
-  .map(([name, icon]) => (
-            <button
-              key={name}
-              className={`nav-item ${activeSection === name ? 'active' : ''}`}
-              onClick={() => {
-  setActiveSection(name);
-}}
-            >
-              {icon} {name}
-            </button>
-          ))}
-        </nav>
+        return !!employeePermissionsForUser[permissionKey];
+      })
+      .map(([name, icon]) => (
+        <button
+          key={name}
+          className={`nav-item ${activeSection === name ? 'active' : ''}`}
+          onClick={() => {
+            setActiveSection(name);
+          }}
+        >
+          {icon} {name}
+        </button>
+      ))
+  )}
+</nav>
 
         <div className="sidebar-bottom">
           <p>Built for Kenyan businesses 🇰🇪</p>
