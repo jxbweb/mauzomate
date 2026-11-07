@@ -218,25 +218,59 @@ useEffect(() => {
 }, [user]);
 useEffect(() => {
   async function loadCustomers() {
-    if (!user) return;
+    if (!user) {
+      setCustomers([]);
+      return;
+    }
 
-    const { data, error } = await supabase
-      .from('customers')
-      .select('*')
-      .order('created_at', { ascending: false });
+    try {
+      let ownerId = user.id;
 
-    if (error) {
+      // Check whether this user is an employee
+      const { data: membership, error: memberError } = await supabase
+        .from('business_members')
+        .select('business_id')
+        .eq('user_id', user.id)
+        .maybeSingle();
+
+      if (memberError) throw memberError;
+
+      // If employee, retrieve the business owner's ID
+      if (membership) {
+        const { data: business, error: businessError } = await supabase
+          .from('businesses')
+          .select('owner_id')
+          .eq('id', membership.business_id)
+          .single();
+
+        if (businessError) throw businessError;
+
+        ownerId = business.owner_id;
+      }
+
+      const { data, error } = await supabase
+        .from('customers')
+        .select('*')
+        .eq('owner_id', ownerId)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+
+      setCustomers(
+        (data || []).map(customer => ({
+          ...customer,
+          totalSpent: Number(customer.total_spent || 0)
+        }))
+      );
+    } catch (error) {
+      console.error('Customer loading error:', error.message);
       alert(error.message);
-    } else {
-      setCustomers(data.map(customer => ({
-  ...customer,
-  totalSpent: Number(customer.total_spent || 0)
-})));
     }
   }
 
   loadCustomers();
 }, [user]);
+ 
 useEffect(() => {
   async function loadSuppliers() {
     if (!user) return;
@@ -792,29 +826,265 @@ setProducts(previousProducts =>
 setAmount('');
  setQuantitySold('1');
 }
-function exportData() {
-  const backup = {
-    exportDate: new Date().toISOString(),
-    products,
-    customers,
-    sales,
-    expenses
-  };
+async function exportData() {
+  try {
+    const { data: branchesData, error: branchesError } = await supabase
+      .from('branches')
+      .select('*');
 
-  const blob = new Blob(
-    [JSON.stringify(backup, null, 2)],
-    { type: 'application/json' }
-  );
+    if (branchesError) throw branchesError;
 
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
+    const { data: settingsData, error: settingsError } = await supabase
+      .from('businesses')
+      .select('*')
+      .eq('owner_id', user.id)
+      .single();
 
-  link.href = url;
-  link.download = 'mauzomate-backup.json';
-  link.click();
+    if (settingsError) throw settingsError;
 
-  URL.revokeObjectURL(url);
+    const { data: employeesData, error: employeesError } = await supabase
+      .from('business_members')
+      .select('*')
+      .eq('business_id', settingsData.id);
+
+    if (employeesError) throw employeesError;
+
+    const backup = {
+      exportDate: new Date().toISOString(),
+      products,
+      customers,
+      suppliers,
+      sales,
+      expenses,
+      branches: branchesData || [],
+      businessSettings: settingsData,
+      employees: employeesData || []
+    };
+
+    const blob = new Blob(
+      [JSON.stringify(backup, null, 2)],
+      { type: 'application/json' }
+    );
+
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+
+    link.href = url;
+    link.download = `MauzoMate-Backup-${new Date().toISOString().slice(0, 10)}.json`;
+
+    link.click();
+    URL.revokeObjectURL(url);
+
+    alert('Complete business backup downloaded successfully!');
+  } catch (error) {
+    console.error('Backup error:', error);
+    alert('Backup failed: ' + error.message);
+  }
 }
+
+async function handleRestoreBackup(e) {
+  const file = e.target.files?.[0];
+
+  if (!file) return;
+
+  try {
+    if (!user?.id) {
+      throw new Error('Please sign in first.');
+    }
+
+    const fileContent = await file.text();
+    const backup = JSON.parse(fileContent);
+
+    const requiredSections = [
+      'products',
+      'customers',
+      'suppliers',
+      'sales',
+      'expenses',
+      'branches',
+      'businessSettings',
+      'employees'
+    ];
+
+    for (const section of requiredSections) {
+      if (!Object.prototype.hasOwnProperty.call(backup, section)) {
+        throw new Error(`Backup is missing ${section}.`);
+      }
+    }
+
+    if (
+      !backup.businessSettings ||
+      backup.businessSettings.owner_id !== user.id
+    ) {
+      throw new Error('This backup does not belong to your account.');
+    }
+
+    const { data: business, error: businessError } = await supabase
+      .from('businesses')
+      .select('id, owner_id')
+      .eq('owner_id', user.id)
+      .single();
+
+    if (businessError) throw businessError;
+
+    if (
+      business.id !== backup.businessSettings.id ||
+      business.owner_id !== user.id
+    ) {
+      throw new Error('Business verification failed. No records imported.');
+    }
+
+    const arraySections = [
+      'products',
+      'customers',
+      'suppliers',
+      'sales',
+      'expenses',
+      'branches',
+      'employees'
+    ];
+
+    for (const section of arraySections) {
+      if (!Array.isArray(backup[section])) {
+        throw new Error(`${section} must be an array.`);
+      }
+    }
+
+    const ownerSections = [
+      'products',
+      'customers',
+      'suppliers',
+      'sales',
+      'expenses'
+    ];
+
+    for (const section of ownerSections) {
+      const valid = backup[section].every(
+        record => record.owner_id === user.id
+      );
+
+      if (!valid) {
+        throw new Error(
+          `Ownership verification failed for ${section}.`
+        );
+      }
+    }
+
+    if (
+      !backup.branches.every(
+        branch => branch.business_id === business.id
+      )
+    ) {
+      throw new Error('Branch ownership verification failed.');
+    }
+
+    const importSection = async (table, records) => {
+      if (!records.length) return;
+
+      const { error } = await supabase
+        .from(table)
+        .upsert(records, {
+          onConflict: 'id',
+          ignoreDuplicates: true
+        });
+
+      if (error) throw error;
+    };
+
+    const products = backup.products.map(item => ({
+      id: item.id,
+      owner_id: item.owner_id,
+      name: item.name,
+      price: item.price,
+      quantity: item.quantity,
+      quantity_sold: item.quantity_sold,
+      created_at: item.created_at
+    }));
+
+    const customers = backup.customers.map(item => ({
+      id: item.id,
+      owner_id: item.owner_id,
+      name: item.name,
+      phone: item.phone,
+      total_spent: item.total_spent,
+      created_at: item.created_at
+    }));
+
+    const suppliers = backup.suppliers.map(item => ({
+      id: item.id,
+      owner_id: item.owner_id,
+      name: item.name,
+      phone: item.phone,
+      email: item.email,
+      address: item.address,
+      created_at: item.created_at
+    }));
+
+    const expenses = backup.expenses.map(item => ({
+      id: item.id,
+      owner_id: item.owner_id,
+      name: item.name,
+      amount: item.amount,
+      expense_date: item.expense_date,
+      created_at: item.created_at
+    }));
+
+    const branches = backup.branches.map(item => ({
+      id: item.id,
+      business_id: item.business_id,
+      branch_name: item.branch_name,
+      address: item.address,
+      phone: item.phone,
+      is_default: item.is_default,
+      created_at: item.created_at
+    }));
+
+    const sales = backup.sales.map(item => ({
+      id: item.id,
+      owner_id: item.owner_id,
+      product_id: item.product_id,
+      customer_id: item.customer_id,
+      description: item.description,
+      quantity: item.quantity,
+      unit_price: item.unit_price,
+      amount: item.amount,
+      sale_date: item.sale_date,
+      sale_time: item.sale_time,
+      created_at: item.created_at
+    }));
+
+    // Import parent records before sales.
+    await importSection('products', products);
+    await importSection('customers', customers);
+    await importSection('suppliers', suppliers);
+    await importSection('expenses', expenses);
+    await importSection('branches', branches);
+    await importSection('sales', sales);
+
+    alert(
+      'Safe merge completed!\n\n' +
+      'Products checked: ' + products.length + '\n' +
+      'Customers checked: ' + customers.length + '\n' +
+      'Suppliers checked: ' + suppliers.length + '\n' +
+      'Expenses checked: ' + expenses.length + '\n' +
+      'Branches checked: ' + branches.length + '\n' +
+      'Sales checked: ' + sales.length + '\n\n' +
+      'Existing UUIDs were skipped. Employees and business settings were not changed.'
+    );
+
+  } catch (error) {
+    console.error('Restore error:', error);
+
+    alert(
+      'Restore stopped: ' + error.message +
+      '\n\nIf an earlier section was already imported, its records were not rolled back. Retrying is safe for matching UUIDs.'
+    );
+
+  } finally {
+    e.target.value = '';
+  }
+}
+
 async function addExpense(e) {
   e.preventDefault();
 
@@ -1322,10 +1592,27 @@ return (
   exportData();
   setProfileMenuOpen(false);
 }}>
-  💾
-  Download Backup
+  💾 Download Backup
 </button>
 
+<button onClick={() => {
+  const input = document.getElementById('restoreBackupInput');
+  input.value = '';
+  input.click();
+}}>
+  ♻️ Restore Backup
+</button>
+
+<input
+  id="restoreBackupInput"
+  type="file"
+  accept=".json,application/json"
+  style={{ display: 'none' }}
+  onChange={(e) => {
+  
+  handleRestoreBackup(e);
+}}
+/>
 <button onClick={() => {
   setActiveSection('Settings');
   setProfileMenuOpen(false);
