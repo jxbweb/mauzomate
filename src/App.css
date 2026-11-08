@@ -1044,13 +1044,36 @@ button:hover {
 /* Consistent ruled tables across MauzoMate */
 .inventory-table,
 .history-table {
+  width: 100%;
   border-collapse: collapse;
   border: 1px solid #cbd8d0;
+  table-layout: auto;
 }
 
 .inventory-table th,
 .inventory-table td {
   border: 1px solid #cbd8d0;
+  padding: 12px 15px;
+  text-align: left;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+.inventory-table th:first-child,
+.inventory-table td:first-child {
+  text-align: center;
+  width: 60px;
+}
+
+.inventory-table th:last-child,
+.inventory-table td:last-child {
+  min-width: 150px;
+}
+
+.inventory-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 /* Dark mode table borders */

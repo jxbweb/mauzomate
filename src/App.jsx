@@ -2551,10 +2551,11 @@ return (
               ) : (
                 <div className="inventory-table-wrapper">
                   <table className="inventory-table">
-                    <thead>
-                      <tr>
-                        <th>Product</th>
-                        <th>Price</th>
+                   <thead>
+  <tr>
+    <th>No.</th>
+    <th>Product</th>
+    <th>Price</th>
                         <th>Quantity</th>
                         <th>Stock Status</th>
                         <th>Actions</th>
