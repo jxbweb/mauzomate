@@ -1695,7 +1695,7 @@ button:hover {
   background-image: url('/mauzomate-banner.png');
   background-size: cover;
   background-position: center;
-  filter: blur(12px) brightness(0.75);
+  filter: blur(8px) brightness(1);
 }
   .auth-card {
     width: 100%;
