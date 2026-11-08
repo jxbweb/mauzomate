@@ -2498,6 +2498,7 @@ return (
     <p>No sales recorded yet.</p>
   ) : (
     <div className="inventory-table-wrapper">
+      
       <table className="inventory-table">
         <thead>
           <tr>

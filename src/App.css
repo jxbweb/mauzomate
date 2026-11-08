@@ -1597,3 +1597,22 @@ button:hover {
     padding: 24px 18px;
   }
 }
+/* Keep supplier and customer tables inside their cards */
+.table-card {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.table-card .inventory-table-wrapper {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.table-card .inventory-table {
+  min-width: 650px;
+}
