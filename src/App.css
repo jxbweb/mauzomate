@@ -531,7 +531,6 @@ button:hover {
     grid-template-columns: 1fr;
   }
 }
-
 @media (max-width: 380px) {
   .main {
     padding: 12px;
@@ -541,8 +540,9 @@ button:hover {
     font-size: 10px;
     padding: 8px;
   }
-/* PROFESSIONAL TABLE DESIGN */
-.inventory-table-wrapper {
+}
+
+/* PROFESSIONAL TABLE DESIGN */.inventory-table-wrapper {
   width: 100%;
   max-width: 100%;
   overflow-x: auto;
