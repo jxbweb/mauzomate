@@ -1670,12 +1670,15 @@ button:hover {
 }
 /* Sign-in page on smaller screens */
 @media (max-width: 768px) {
-  .auth-container {
-    background-size: contain;
+    .auth-container {
+    min-height: 100dvh;
+    background-size: cover;
     background-position: center center;
-    background-color: #173d32;
     background-repeat: no-repeat;
     padding: 15px;
+    background-image:
+      linear-gradient(rgba(16, 43, 37, 0.15), rgba(16, 43, 37, 0.15)),
+      url('/mauzomate-banner.png');
   }
 
   .auth-card {
