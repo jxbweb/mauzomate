@@ -27,6 +27,7 @@ const [branchAddress, setBranchAddress] = useState('');
 const [branchPhone, setBranchPhone] = useState('');
 const [employeesLoading, setEmployeesLoading] = useState(false);
 const [employeeName, setEmployeeName] = useState('');
+const [editingEmployeeId, setEditingEmployeeId] = useState(null);
 const [employeeEmail, setEmployeeEmail] = useState('');
 const [employeeRole, setEmployeeRole] = useState('cashier');
 const [employeePermissions, setEmployeePermissions] = useState({
@@ -465,7 +466,104 @@ if (data) {
   if (insertError) throw insertError;
   data = newMember;
 }
+function editEmployee(employee) {
+  setEditingEmployeeId(employee.id);
+  setEmployeeName(employee.full_name || '');
+  setEmployeeEmail(employee.email || '');
+  setEmployeeRole(employee.role || 'cashier');
+  setEmployeeBranch(employee.branch_id || '');
 
+  setEmployeePermissions({
+    dashboard: false,
+    sales: false,
+    inventory: false,
+    customers: false,
+    suppliers: false,
+    expenses: false,
+    reports: false,
+    employees: false,
+    branches: false,
+    business_settings: false,
+    ...(employee.permissions || {})
+  });
+}
+async function updateEmployee(e) {
+  e.preventDefault();
+
+  if (!employeeName.trim()) {
+    alert('Please enter the employee name.');
+    return;
+  }
+
+  try {
+    const { data: business, error: businessError } = await supabase
+      .from('businesses')
+      .select('id')
+      .eq('owner_id', user.id)
+      .single();
+
+    if (businessError) throw businessError;
+
+    const { error } = await supabase
+      .from('business_members')
+      .update({
+        full_name: employeeName.trim(),
+        role: employeeRole,
+        branch_id: employeeBranch || null,
+        permissions: employeePermissions
+      })
+      .eq('id', editingEmployeeId)
+      .eq('business_id', business.id);
+
+    if (error) throw error;
+
+    setEmployees(previous =>
+      previous.map(employee =>
+        employee.id === editingEmployeeId
+          ? {
+              ...employee,
+              full_name: employeeName.trim(),
+              role: employeeRole,
+              branch_id: employeeBranch || null,
+              permissions: employeePermissions
+            }
+          : employee
+      )
+    );
+
+    setEditingEmployeeId(null);
+    setEmployeeName('');
+    setEmployeeEmail('');
+    setEmployeeRole('cashier');
+    setEmployeeBranch('');
+
+  } catch (error) {
+    alert('Could not update employee: ' + error.message);
+  }
+}
+async function deleteEmployee(employeeId) {
+  const confirmed = window.confirm(
+    'Are you sure you want to deactivate this employee? They will lose access to the business.'
+  );
+
+  if (!confirmed) return;
+
+  try {
+    const { error } = await supabase
+      .from('business_members')
+      .update({ status: 'inactive' })
+      .eq('id', employeeId);
+
+    if (error) throw error;
+
+    setEmployees(previous =>
+      previous.filter(employee => employee.id !== employeeId)
+    );
+
+  } catch (error) {
+    alert('Could not deactivate employee: ' + error.message);
+  }
+}
 // Send the actual invitation email
 const { data: invitationResult, error: invitationError } =
   await supabase.functions.invoke('invite-employee', {
@@ -800,6 +898,9 @@ setProfilePhotoUrl(data?.signedUrl || '');
 ]);
 const [expenses, setExpenses] = useState([]);
 const [expenseName, setExpenseName] = useState('');
+const [expenseDate, setExpenseDate] = useState(
+  new Date().toISOString().split('T')[0]
+);
 const [expenseAmount, setExpenseAmount] = useState('');const [businessName, setBusinessName] = useState(
   
   () => localStorage.getItem('mauzomate-business-name') || ''
@@ -1255,7 +1356,7 @@ async function addExpense(e) {
 
   const value = Number(expenseAmount);
 
-  if (!expenseName.trim() || value <= 0 || !Number.isFinite(value)) {
+  if (!expenseName.trim() || !expenseDate || value <= 0 || !Number.isFinite(value)) {
     alert('Enter a valid expense name and amount.');
     return;
   }
@@ -1272,7 +1373,7 @@ async function addExpense(e) {
   .insert({
     name: newExpense.name,
     amount: newExpense.amount,
-    expense_date: new Date().toISOString().slice(0, 10)
+   expense_date: expenseDate
   })
   .select()
   .single();
@@ -1286,6 +1387,7 @@ setExpenses(previousExpenses => [data, ...previousExpenses]);
 
   setExpenseName('');
   setExpenseAmount('');
+  setExpenseDate(new Date().toISOString().split('T')[0]);
 }
 async function editExpense(expense) {
   const updatedName = window.prompt(
@@ -1343,7 +1445,6 @@ async function editExpense(expense) {
     )
   );
 
-  alert('Expense updated successfully.');
 }
 
 async function deleteExpense(expenseId) {
@@ -1367,7 +1468,6 @@ async function deleteExpense(expenseId) {
     previousExpenses.filter(expense => expense.id !== expenseId)
   );
 
-  alert('Expense deleted successfully.');
 }
 
 async function addSupplier(e) {
@@ -1401,7 +1501,6 @@ async function addSupplier(e) {
   setSupplierEmail('');
   setSupplierAddress('');
 
-  alert('Supplier added successfully!');
 }
 async function editSupplier(supplier) {
   const updatedName = window.prompt(
@@ -1460,7 +1559,6 @@ async function editSupplier(supplier) {
     )
   );
 
-  alert('Supplier updated successfully.');
 }
 async function deleteSupplier(supplierId) {
   const confirmed = window.confirm(
@@ -1483,7 +1581,6 @@ async function deleteSupplier(supplierId) {
     previous.filter(supplier => supplier.id !== supplierId)
   );
 
-  alert('Supplier deleted successfully.');
 }
 async function addCustomer(e) {
   e.preventDefault();
@@ -1569,7 +1666,6 @@ async function editCustomer(customer) {
     )
   );
 
-  alert('Customer updated successfully.');
 }
 
 async function deleteCustomer(customerId) {
@@ -1593,7 +1689,6 @@ async function deleteCustomer(customerId) {
     previousCustomers.filter(customer => customer.id !== customerId)
   );
 
-  alert('Customer deleted successfully.');
 }
 async function saveProduct(e) {
   e.preventDefault();
@@ -1689,7 +1784,6 @@ async function restockProduct(product) {
     )
   );
 
-  alert('Stock updated successfully!');
 }
 async function deleteProduct(id) {
  if (window.confirm('Are you sure you want to delete this product?')) {
@@ -2402,7 +2496,13 @@ return (
           onChange={e => setExpenseAmount(e.target.value)}
           required
         />
-
+<label>Expense Date</label>
+<input
+  type="date"
+  value={expenseDate}
+  onChange={e => setExpenseDate(e.target.value)}
+  required
+/>
         <button type="submit">Save Expense</button>
       </form>
     </div>
@@ -2772,13 +2872,14 @@ return (
 <div className="form-card">
   <h3>Invite Employee</h3>
 
-  <form onSubmit={inviteEmployee}>
+  <form onSubmit={editingEmployeeId ? updateEmployee : inviteEmployee}>
     <label>Full Name</label>
     <input
       type="text"
       placeholder="Employee full name"
       value={employeeName}
       onChange={e => setEmployeeName(e.target.value)}
+      disabled={!!editingEmployeeId}
       required
     />
 
@@ -2848,8 +2949,38 @@ return (
   </div>
 )}
     <button type="submit" disabled={invitingEmployee}>
-      {invitingEmployee ? 'Preparing invitation...' : 'Invite Employee'}
-    </button>
+  {editingEmployeeId
+    ? 'Save Changes'
+    : invitingEmployee
+      ? 'Preparing invitation...'
+      : 'Invite Employee'}
+</button>
+{editingEmployeeId && (
+  <button
+    type="button"
+    onClick={() => {
+      setEditingEmployeeId(null);
+      setEmployeeName('');
+      setEmployeeEmail('');
+      setEmployeeRole('cashier');
+      setEmployeeBranch('');
+      setEmployeePermissions({
+        dashboard: true,
+        sales: false,
+        inventory: false,
+        customers: false,
+        suppliers: false,
+        expenses: false,
+        reports: false,
+        employees: false,
+        branches: false,
+        business_settings: false
+      });
+    }}
+  >
+    Cancel Editing
+  </button>
+)}
   </form>
 </div>
     <div className="form-card">
@@ -2862,26 +2993,39 @@ return (
       ) : (
         <div className="inventory-table-wrapper">
           <table className="inventory-table">
-            <thead>
-              <tr>
-                <th>Name</th>
-                <th>Email</th>
-                <th>Role</th>
-                <th>Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {employees
-                .filter(employee => employee.role !== 'owner')
-                .map(employee => (
-                  <tr key={employee.id}>
-                    <td>{employee.full_name || 'Not provided'}</td>
-                    <td>{employee.email}</td>
-                    <td>{employee.role.replace('_', ' ')}</td>
-                    <td>{employee.status}</td>
-                  </tr>
-                ))}
-            </tbody>
+          <thead>
+  <tr>
+    <th>#</th>
+    <th>Name</th>
+    <th>Email</th>
+    <th>Role</th>
+    <th>Status</th>
+    <th>Actions</th>
+  </tr>
+</thead>
+
+<tbody>
+  {employees
+    .filter(employee => employee.role !== 'owner')
+    .map((employee, index) => (
+      <tr key={employee.id}>
+        <td>{index + 1}</td>
+        <td>{employee.full_name || 'Not provided'}</td>
+        <td>{employee.email}</td>
+        <td>{employee.role.replace('_', ' ')}</td>
+        <td>{employee.status}</td>
+        <td>
+          <button onClick={() => editEmployee(employee)}>
+            Edit
+          </button>
+
+          <button onClick={() => deleteEmployee(employee.id)}>
+            Delete
+          </button>
+        </td>
+      </tr>
+    ))}
+</tbody>
           </table>
         </div>
       )}

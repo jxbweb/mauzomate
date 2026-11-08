@@ -1709,3 +1709,28 @@ button:hover {
   -webkit-backdrop-filter: blur(4px);
   border: 1px solid rgba(255, 255, 255, 0.3);
 }
+html,
+body,
+#root {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
+* {
+  box-sizing: border-box;
+}
+/* Employee action buttons */
+.inventory-table td:last-child {
+  white-space: nowrap;
+  min-width: 150px;
+}
+
+.inventory-table td:last-child button {
+  margin: 4px;
+  padding: 8px 14px;
+  cursor: pointer;
+  position: relative;
+  z-index: 2;
+  pointer-events: auto;
+}
