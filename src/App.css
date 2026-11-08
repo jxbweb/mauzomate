@@ -1,4 +1,9 @@
-
+/* Prevent elements from exceeding their available width */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
 * {
   box-sizing: border-box;
 }
@@ -1510,5 +1515,85 @@ button:hover {
   .main .stat-card h2 {
     font-size: 17px;
     overflow-wrap: anywhere;
+  }
+}
+/* FINAL RESPONSIVE LAYOUT FIX */
+
+/* Tablets and smaller laptops */
+@media (max-width: 768px) {
+  .sidebar {
+    position: fixed;
+    left: 0;
+    top: 0;
+    width: 85px;
+    min-width: 85px;
+    height: 100dvh;
+    overflow-y: auto;
+  }
+
+  .main {
+    width: calc(100% - 85px);
+    max-width: calc(100% - 85px);
+    min-width: 0;
+    margin-left: 85px;
+    padding: 14px;
+  }
+
+  .panel,
+  .stat-card,
+  .form-card {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .content-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .main table {
+    max-width: 100%;
+  }
+}
+
+/* Small phones */
+@media (max-width: 550px) {
+  .sidebar {
+    position: relative;
+    width: 100%;
+    min-width: 0;
+    height: auto;
+    padding: 12px;
+  }
+
+  .sidebar nav {
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+
+  .main {
+    width: 100%;
+    max-width: 100%;
+    margin-left: 0;
+    padding: 12px;
+  }
+
+  .panel {
+    padding: 14px;
+  }
+
+  .topbar {
+    flex-wrap: wrap;
+  }
+
+  .auth-container {
+    min-height: 100dvh;
+    height: auto;
+    padding: 12px;
+  }
+
+  .auth-card {
+    width: 100%;
+    max-width: 400px;
+    padding: 24px 18px;
   }
 }
