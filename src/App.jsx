@@ -251,7 +251,11 @@ if (ownerError) {
 if (ownedBusiness) {
   setIsEmployee(false);
   setEmployeePermissionsForUser({});
-  return;
+} else {
+  setIsEmployee(!!membership);
+  setEmployeePermissionsForUser(
+    membership?.permissions || {}
+  );
 }
       // If employee, retrieve the business owner's ID
       if (membership) {
@@ -327,10 +331,17 @@ useEffect(() => {
 
     try {
       const { data: business, error: businessError } = await supabase
-        .from('businesses')
-        .select('id')
-        .eq('owner_id', user.id)
-        .single();
+  .from('businesses')
+  .select('id')
+  .eq('owner_id', user.id)
+  .maybeSingle();
+
+if (businessError) throw businessError;
+
+if (!business) {
+  setEmployees([]);
+  return;
+}
 
       if (businessError) throw businessError;
 
@@ -516,11 +527,17 @@ useEffect(() => {
 
     try {
       const { data: business, error: businessError } = await supabase
-        .from('businesses')
-        .select('id')
-        .eq('owner_id', user.id)
-        .single();
+  .from('businesses')
+  .select('id')
+  .eq('owner_id', user.id)
+  .maybeSingle();
 
+if (businessError) throw businessError;
+
+if (!business) {
+  setBranches([]);
+  return;
+}
       if (businessError) throw businessError;
 
       const { data, error } = await supabase
@@ -552,10 +569,17 @@ async function addBranch(e) {
 
   try {
     const { data: business, error: businessError } = await supabase
-      .from('businesses')
-      .select('id')
-      .eq('owner_id', user.id)
-      .single();
+  .from('businesses')
+  .select('id')
+  .eq('owner_id', user.id)
+  .maybeSingle();
+
+if (businessError) throw businessError;
+
+if (!business) {
+  setEmployees([]);
+  return;
+}
 
     if (businessError) throw businessError;
 
@@ -585,13 +609,13 @@ async function addBranch(e) {
 }
 useEffect(() => {
   async function loadBusinessSettings() {
-    if (!user) return;
+    if (!user || roleLoading || isEmployee) return;
 
     const { data, error } = await supabase
       .from('businesses')
-      .select('*')
-      .eq('owner_id', user.id)
-      .single();
+.select('*')
+.eq('owner_id', user.id)
+.maybeSingle();
 
     if (error || !data) {
   console.error(
@@ -610,7 +634,7 @@ useEffect(() => {
   }
 
   loadBusinessSettings();
-}, [user]);
+}, [user, isEmployee, roleLoading]);
 async function saveBusinessSettings(e) {
   e.preventDefault();
 
@@ -652,11 +676,11 @@ async function saveBusinessSettings(e) {
 const [authLoading, setAuthLoading] = useState(true);
 const [photoLoading, setPhotoLoading] = useState(false);
 useEffect(() => {
-  supabase.auth.getSession().then(({ data }) => {
-    setUser(data.session?.user ?? null);
-    setAuthLoading(false);
-  });
-
+ supabase.auth.getSession().then(({ data }) => {
+  setRoleLoading(true);
+  setUser(data.session?.user ?? null);
+  setAuthLoading(false);
+});
   const { data: { subscription } } =
     supabase.auth.onAuthStateChange((event, session) => {
      
@@ -667,6 +691,7 @@ useEffect(() => {
 if (event === 'PASSWORD_RECOVERY' || authType === 'invite') {
   setIsRecoveryMode(true);
 }
+setRoleLoading(true);
   setUser(session?.user ?? null);
   setAuthLoading(false);
 });
@@ -727,14 +752,22 @@ useEffect(() => {
 }, [user]);
 useEffect(() => {
   async function loadProfilePhoto() {
-    if (!user) {
-      setProfilePhotoUrl('');
-      return;
-    }
+   if (!user) {
+  setProfilePhotoUrl('');
+  return;
+}
 
-    const { data } = await supabase.storage
-      .from('profile-photos')
-      .createSignedUrl(`${user.id}/profile.jpg`, 3600);
+const { data, error } = await supabase.storage
+  .from('profile-photos')
+  .createSignedUrl(`${user.id}/profile.jpg`, 3600);
+
+if (error) {
+  console.error('Profile photo loading error:', error.message);
+  setProfilePhotoUrl('');
+  return;
+}
+
+setProfilePhotoUrl(data?.signedUrl || '');
 
     setProfilePhotoUrl(data?.signedUrl || '');
   }
@@ -2592,7 +2625,12 @@ return (
 </button>
 
 <button onClick={() => {
-  fileInputRef.current.click();
+  if (fileInputRef.current) {
+    fileInputRef.current.click();
+  } else {
+    console.error('Profile photo input was not found.');
+  }
+
   setProfileMenuOpen(false);
 }}>
   📷 Change Profile Photo
