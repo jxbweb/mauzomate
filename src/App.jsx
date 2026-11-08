@@ -1934,9 +1934,10 @@ return (
   ) : (
     <div className="inventory-table-wrapper">
       <table className="inventory-table">
-        <thead>
-          <tr>
-            <th>Product</th>
+       <thead>
+  <tr>
+    <th>No.</th>
+    <th>Product</th>
 <th>Remaining Stock</th>
 <th>Status</th>
 <th>Action</th>
@@ -2560,9 +2561,10 @@ return (
                       </tr>
                     </thead>
                     <tbody>
-                      {products.map(product => (
-                        <tr key={product.id}>
-                          <td>{product.name}</td>
+                     {products.map((product, index) => (
+  <tr key={product.id}>
+    <td>{index + 1}</td>
+    <td>{product.name}</td>
                           <td>
                            {currency} {Number(product.price).toLocaleString()}
                           </td>
