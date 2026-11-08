@@ -1333,3 +1333,47 @@ button:hover {
   }
 
 }
+@media (max-width: 768px) {
+  .sidebar {
+    width: 100%;
+    height: auto;
+    min-height: 0;
+    position: relative;
+    padding: 8px 12px;
+    gap: 4px;
+  }
+
+  .sidebar .logo {
+    font-size: 18px;
+    margin: 0;
+  }
+
+  .sidebar .tagline {
+    display: none;
+  }
+
+  .sidebar nav {
+    display: flex;
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 5px;
+    margin-top: 8px;
+  }
+
+  .sidebar .nav-item {
+    width: auto;
+    min-height: 34px;
+    padding: 7px 10px;
+    font-size: 12px;
+  }
+
+  .sidebar-bottom {
+    display: none;
+  }
+
+  .main {
+    width: 100%;
+    margin: 0;
+    padding: 12px;
+  }
+}
