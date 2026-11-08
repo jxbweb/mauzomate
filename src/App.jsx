@@ -746,6 +746,25 @@ useEffect(() => {
   const [quantitySold, setQuantitySold] = useState('1');
   const [description, setDescription] = useState('');
   const [activeSection, setActiveSection] = useState('Dashboard');
+  useEffect(() => {
+  if (roleLoading || !isEmployee) return;
+
+  const permissionKey = activeSection
+    .toLowerCase()
+    .replace(' ', '_');
+
+  if (
+    activeSection !== 'Settings' &&
+    !employeePermissionsForUser[permissionKey]
+  ) {
+    setActiveSection('Dashboard');
+  }
+}, [
+  roleLoading,
+  isEmployee,
+  activeSection,
+  employeePermissionsForUser
+]);
 const [expenses, setExpenses] = useState([]);
 const [expenseName, setExpenseName] = useState('');
 const [expenseAmount, setExpenseAmount] = useState('');const [businessName, setBusinessName] = useState(
@@ -1540,13 +1559,10 @@ async function restockProduct(product) {
 
   const newQuantity = Number(product.quantity) + amount;
 
-  const { data, error } = await supabase
-    .from('products')
-    .update({ quantity: newQuantity })
-    .eq('id', product.id)
-    .select()
-    .single();
-
+  const { data, error } = await supabase.rpc('restock_product', {
+  p_product_id: product.id,
+  p_amount: amount
+});
   if (error) {
     alert(error.message);
     return;
