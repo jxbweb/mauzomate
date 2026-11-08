@@ -1403,6 +1403,88 @@ async function addSupplier(e) {
 
   alert('Supplier added successfully!');
 }
+async function editSupplier(supplier) {
+  const updatedName = window.prompt(
+    'Supplier name:',
+    supplier.name
+  );
+
+  if (updatedName === null) return;
+
+  if (!updatedName.trim()) {
+    alert('Supplier name cannot be empty.');
+    return;
+  }
+
+  const updatedPhone = window.prompt(
+    'Supplier phone:',
+    supplier.phone || ''
+  );
+
+  if (updatedPhone === null) return;
+
+  const updatedEmail = window.prompt(
+    'Supplier email:',
+    supplier.email || ''
+  );
+
+  if (updatedEmail === null) return;
+
+  const updatedAddress = window.prompt(
+    'Supplier address:',
+    supplier.address || ''
+  );
+
+  if (updatedAddress === null) return;
+
+  const { data, error } = await supabase
+    .from('suppliers')
+    .update({
+      name: updatedName.trim(),
+      phone: updatedPhone.trim(),
+      email: updatedEmail.trim(),
+      address: updatedAddress.trim()
+    })
+    .eq('id', supplier.id)
+    .select()
+    .single();
+
+  if (error) {
+    alert(error.message);
+    return;
+  }
+
+  setSuppliers(previous =>
+    previous.map(item =>
+      item.id === supplier.id ? data : item
+    )
+  );
+
+  alert('Supplier updated successfully.');
+}
+async function deleteSupplier(supplierId) {
+  const confirmed = window.confirm(
+    'Are you sure you want to delete this supplier?'
+  );
+
+  if (!confirmed) return;
+
+  const { error } = await supabase
+    .from('suppliers')
+    .delete()
+    .eq('id', supplierId);
+
+  if (error) {
+    alert(error.message);
+    return;
+  }
+
+  setSuppliers(previous =>
+    previous.filter(supplier => supplier.id !== supplierId)
+  );
+
+  alert('Supplier deleted successfully.');
+}
 async function addCustomer(e) {
   e.preventDefault();
 
