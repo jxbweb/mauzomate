@@ -2318,9 +2318,10 @@ return (
     <th>Phone</th>
     <th>Email</th>
     <th>Address</th>
+    <th>Actions</th>
   </tr>
 </thead>
-      <tbody>
+     <tbody>
   {suppliers.map((supplier, index) => (
     <tr key={supplier.id}>
       <td>{index + 1}</td>
@@ -2328,6 +2329,23 @@ return (
       <td>{supplier.phone}</td>
       <td>{supplier.email}</td>
       <td>{supplier.address}</td>
+      <td>
+        <div className="inventory-actions">
+          <button
+            type="button"
+            onClick={() => editSupplier(supplier)}
+          >
+            Edit
+          </button>
+
+          <button
+            type="button"
+            onClick={() => deleteSupplier(supplier.id)}
+          >
+            Delete
+          </button>
+        </div>
+      </td>
     </tr>
   ))}
 </tbody>
