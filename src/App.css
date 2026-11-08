@@ -1671,15 +1671,27 @@ button:hover {
 /* Sign-in page on smaller screens */
 @media (max-width: 768px) {
     .auth-container {
-    min-height: 100dvh;
-    background-size: cover;
-    background-position: center center;
-    background-repeat: no-repeat;
-    padding: 15px;
-    background-image:
-      linear-gradient(rgba(16, 43, 37, 0.15), rgba(16, 43, 37, 0.15)),
-      url('/mauzomate-banner.png');
-  }
+  position: relative;
+  isolation: isolate;
+  min-height: 100dvh;
+  background-color: #102b25;
+  background-image: url('/mauzomate-banner.png');
+  background-size: contain;
+  background-position: center;
+  background-repeat: no-repeat;
+  padding: 15px;
+}
+
+.auth-container::before {
+  content: "";
+  position: absolute;
+  inset: -18px;
+  z-index: -1;
+  background-image: url('/mauzomate-banner.png');
+  background-size: cover;
+  background-position: center;
+  filter: blur(12px) brightness(0.75);
+}
 
   .auth-card {
     width: 100%;
