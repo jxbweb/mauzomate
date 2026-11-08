@@ -651,6 +651,8 @@ button:hover {
 .dark-mode .inventory-table tbody tr:hover {
   background: #304d3e;
 }
+
+@media (max-width: 768px) {
   h1 {
     font-size: 23px;
   }
@@ -659,6 +661,7 @@ button:hover {
     font-size: 21px;
   }
 }
+
 .profile-section {
   display: flex;
   flex-direction: column;
