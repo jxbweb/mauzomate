@@ -2310,7 +2310,8 @@ return (
   {suppliers.length === 0 ? (
     <p>No suppliers added yet.</p>
   ) : (
-    <table className="inventory-table">
+    <div className="inventory-table-wrapper">
+  <table className="inventory-table">
      <thead>
   <tr>
     <th>No.</th>
@@ -2349,7 +2350,8 @@ return (
     </tr>
   ))}
 </tbody>
-    </table>
+        </table>
+  </div>
   )}
 </div>
   </div>
