@@ -1619,3 +1619,17 @@ button:hover {
 .table-card .inventory-table {
   min-width: 650px;
 }
+/* Horizontal scrolling for tables */
+.inventory-table-wrapper {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+}
+
+.inventory-table-wrapper .inventory-table {
+  min-width: 650px;
+  width: 100%;
+}
