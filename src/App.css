@@ -1668,3 +1668,19 @@ button:hover {
     padding: 14px !important;
   }
 }
+/* Sign-in page on smaller screens */
+@media (max-width: 768px) {
+  .auth-container {
+    background-size: contain;
+    background-position: center center;
+    background-color: #173d32;
+    background-repeat: no-repeat;
+    padding: 15px;
+  }
+
+  .auth-card {
+    width: 100%;
+    max-width: 520px;
+    padding: 24px 18px;
+  }
+}
