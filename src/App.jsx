@@ -2229,24 +2229,26 @@ return (
     <p>No suppliers added yet.</p>
   ) : (
     <table className="inventory-table">
-      <thead>
-        <tr>
-          <th>Name</th>
-          <th>Phone</th>
-          <th>Email</th>
-          <th>Address</th>
-        </tr>
-      </thead>
+     <thead>
+  <tr>
+    <th>No.</th>
+    <th>Name</th>
+    <th>Phone</th>
+    <th>Email</th>
+    <th>Address</th>
+  </tr>
+</thead>
       <tbody>
-        {suppliers.map(supplier => (
-          <tr key={supplier.id}>
-            <td>{supplier.name}</td>
-            <td>{supplier.phone}</td>
-            <td>{supplier.email}</td>
-            <td>{supplier.address}</td>
-          </tr>
-        ))}
-      </tbody>
+  {suppliers.map((supplier, index) => (
+    <tr key={supplier.id}>
+      <td>{index + 1}</td>
+      <td>{supplier.name}</td>
+      <td>{supplier.phone}</td>
+      <td>{supplier.email}</td>
+      <td>{supplier.address}</td>
+    </tr>
+  ))}
+</tbody>
     </table>
   )}
 </div>
