@@ -1187,8 +1187,34 @@ button:hover {
    MAUZOMATE MOBILE RESPONSIVE DESIGN
 ================================= */
 
-@media (max-width: 768px) {
 
+
+/* Smaller phones */
+@media (max-width: 420px) {
+
+  .main {
+    padding: 12px;
+  }
+
+  .stats {
+    gap: 9px;
+  }
+
+  .stat-card {
+    padding: 12px;
+  }
+
+  .stat-card h2 {
+    font-size: 17px;
+  }
+
+  .topbar h1 {
+    font-size: 19px;
+  }
+
+}
+/* MOBILE RESPONSIVE DESIGN */
+@media (max-width: 768px) {
   * {
     box-sizing: border-box;
   }
@@ -1203,10 +1229,47 @@ button:hover {
     overflow-x: hidden;
   }
 
-  .main {
+  .sidebar {
+    width: 125px;
+    min-width: 125px;
+    height: 100vh;
+    height: 100dvh;
+    position: fixed;
+    top: 0;
+    left: 0;
+    padding: 15px 8px;
+    overflow-y: auto;
+    overflow-x: hidden;
+  }
+
+  .sidebar .logo {
+    font-size: 16px;
+    margin-bottom: 8px;
+  }
+
+  .sidebar .tagline,
+  .sidebar-bottom {
+    display: none;
+  }
+
+  .sidebar nav {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .sidebar .nav-item {
     width: 100%;
-    max-width: 100%;
-    margin: 0;
+    padding: 10px 5px;
+    font-size: 11px;
+    text-align: left;
+  }
+
+  .main {
+    width: calc(100% - 125px);
+    max-width: calc(100% - 125px);
+    min-width: 0;
+    margin-left: 125px;
     padding: 16px;
   }
 
@@ -1306,12 +1369,10 @@ button:hover {
   button {
     min-height: 40px;
   }
-
 }
 
 /* Smaller phones */
 @media (max-width: 420px) {
-
   .main {
     padding: 12px;
   }
@@ -1330,50 +1391,5 @@ button:hover {
 
   .topbar h1 {
     font-size: 19px;
-  }
-
-}
-@media (max-width: 768px) {
-  .sidebar {
-    width: 100%;
-    height: auto;
-    min-height: 0;
-    position: relative;
-    padding: 8px 12px;
-    gap: 4px;
-  }
-
-  .sidebar .logo {
-    font-size: 18px;
-    margin: 0;
-  }
-
-  .sidebar .tagline {
-    display: none;
-  }
-
-  .sidebar nav {
-    display: flex;
-    flex-direction: row;
-    flex-wrap: wrap;
-    gap: 5px;
-    margin-top: 8px;
-  }
-
-  .sidebar .nav-item {
-    width: auto;
-    min-height: 34px;
-    padding: 7px 10px;
-    font-size: 12px;
-  }
-
-  .sidebar-bottom {
-    display: none;
-  }
-
-  .main {
-    width: 100%;
-    margin: 0;
-    padding: 12px;
   }
 }
