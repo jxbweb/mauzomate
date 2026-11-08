@@ -320,7 +320,29 @@ useEffect(() => {
 
   loadSuppliers();
 }, [user]);
+useEffect(() => {
+  async function loadSupplierDocuments() {
+    if (!user) {
+      setSupplierDocuments([]);
+      return;
+    }
 
+    const { data, error } = await supabase
+      .from('supplier_documents')
+      .select('*')
+      .eq('owner_id', user.id)
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      console.error('Supplier documents loading error:', error.message);
+      return;
+    }
+
+    setSupplierDocuments(data || []);
+  }
+
+  loadSupplierDocuments();
+}, [user]);
 useEffect(() => {
   async function loadEmployees() {
     if (!user) {
@@ -365,6 +387,7 @@ if (!business) {
   loadEmployees();
 }, [user]);
 
+
 async function inviteEmployee(e) {
   e.preventDefault();
 
@@ -389,30 +412,8 @@ async function inviteEmployee(e) {
 
     if (businessError) throw businessError;
 
-    let { data, error } = await supabase
-  .from('business_members')
-  .select('*')
-  .eq('business_id', business.id)
-  .eq('email', employeeEmail.trim().toLowerCase())
-  .maybeSingle();
-
-if (error) throw error;
-
-if (data) {
-  if (data.status !== 'pending' || data.user_id) {
-    throw new Error('This email already belongs to an active or linked employee.');
-  }
-
-  const { data: updatedMember, error: updateError } = await supabase
-    .from('business_members')
-    .update({
-      full_name: employeeName.trim(),
-      role: employeeRole,
-      branch_id: employeeBranch || null,
-      permissions: employeeRole === 'custom'
-  ? employeePermissions
-  : employeeRole === 'manager'
-    ? {
+    const rolePermissions = {
+      manager: {
         dashboard: true,
         sales: true,
         inventory: true,
@@ -420,52 +421,116 @@ if (data) {
         suppliers: true,
         expenses: true,
         reports: true
+      },
+      cashier: {
+        dashboard: true,
+        sales: true,
+        customers: true
+      },
+      stock_manager: {
+        dashboard: true,
+        inventory: true,
+        suppliers: true
+      },
+      accountant: {
+        dashboard: true,
+        sales: true,
+        expenses: true,
+        reports: true
+      },
+      custom: employeePermissions
+    };
+
+    const permissions = rolePermissions[employeeRole] || {};
+
+    let { data, error } = await supabase
+      .from('business_members')
+      .select('*')
+      .eq('business_id', business.id)
+      .eq('email', employeeEmail.trim().toLowerCase())
+      .maybeSingle();
+
+    if (error) throw error;
+
+    if (data) {
+      if (data.status !== 'pending' || data.user_id) {
+        throw new Error('This email already belongs to an active or linked employee.');
       }
-    : employeeRole === 'cashier'
-      ? {
-          dashboard: true,
-          sales: true,
-          customers: true
+
+      const { data: updatedMember, error: updateError } = await supabase
+        .from('business_members')
+        .update({
+          full_name: employeeName.trim(),
+          role: employeeRole,
+          branch_id: employeeBranch || null,
+          permissions
+        })
+        .eq('id', data.id)
+        .select()
+        .single();
+
+      if (updateError) throw updateError;
+      data = updatedMember;
+    } else {
+      const { data: newMember, error: insertError } = await supabase
+        .from('business_members')
+        .insert({
+          business_id: business.id,
+          full_name: employeeName.trim(),
+          email: employeeEmail.trim().toLowerCase(),
+          role: employeeRole,
+          branch_id: employeeBranch || null,
+          status: 'pending',
+          permissions
+        })
+        .select()
+        .single();
+
+      if (insertError) throw insertError;
+      data = newMember;
+    }
+
+    const { data: invitationResult, error: invitationError } =
+      await supabase.functions.invoke('invite-employee', {
+        body: {
+          email: employeeEmail.trim().toLowerCase()
         }
-      : employeeRole === 'stock_manager'
-        ? {
-            dashboard: true,
-            inventory: true,
-            suppliers: true
-          }
-        : employeeRole === 'accountant'
-          ? {
-              dashboard: true,
-              sales: true,
-              expenses: true,
-              reports: true
-            }
-          : {}
-    })
-    .eq('id', data.id)
-    .select()
-    .single();
+      });
 
-  if (updateError) throw updateError;
-  data = updatedMember;
-} else {
-  const { data: newMember, error: insertError } = await supabase
-    .from('business_members')
-    .insert({
-      business_id: business.id,
-      full_name: employeeName.trim(),
-      email: employeeEmail.trim().toLowerCase(),
-      role: employeeRole,
-      branch_id: employeeBranch || null,
-      status: 'pending',
-      permissions: employeeRole === 'custom' ? employeePermissions : {}
-    })
-    .select()
-    .single();
+    if (invitationError) throw invitationError;
 
-  if (insertError) throw insertError;
-  data = newMember;
+    if (invitationResult?.error) {
+      throw new Error(invitationResult.error);
+    }
+
+    setEmployees(previous => [data, ...previous]);
+    setEmployeeName('');
+    setEmployeeEmail('');
+    setEmployeeRole('cashier');
+    setEmployeeBranch('');
+
+    setEmployeePermissions({
+      dashboard: true,
+      sales: false,
+      inventory: false,
+      customers: false,
+      suppliers: false,
+      expenses: false,
+      reports: false,
+      employees: false,
+      branches: false,
+      business_settings: false
+    });
+
+    alert('Employee invitation sent successfully!');
+
+  } catch (error) {
+    alert('Could not add employee: ' + error.message);
+  } finally {
+    setInvitingEmployee(false);
+  }
 }
+
 function editEmployee(employee) {
   setEditingEmployeeId(employee.id);
   setEmployeeName(employee.full_name || '');
@@ -487,6 +552,7 @@ function editEmployee(employee) {
     ...(employee.permissions || {})
   });
 }
+
 async function updateEmployee(e) {
   e.preventDefault();
 
@@ -510,7 +576,9 @@ async function updateEmployee(e) {
         full_name: employeeName.trim(),
         role: employeeRole,
         branch_id: employeeBranch || null,
-        permissions: employeePermissions
+        permissions: employeeRole === 'custom'
+          ? employeePermissions
+          : {}
       })
       .eq('id', editingEmployeeId)
       .eq('business_id', business.id);
@@ -541,9 +609,10 @@ async function updateEmployee(e) {
     alert('Could not update employee: ' + error.message);
   }
 }
+
 async function deleteEmployee(employeeId) {
   const confirmed = window.confirm(
-    'Are you sure you want to deactivate this employee? They will lose access to the business.'
+    'Are you sure you want to deactivate this employee?'
   );
 
   if (!confirmed) return;
@@ -564,55 +633,6 @@ async function deleteEmployee(employeeId) {
     alert('Could not deactivate employee: ' + error.message);
   }
 }
-// Send the actual invitation email
-const { data: invitationResult, error: invitationError } =
-  await supabase.functions.invoke('invite-employee', {
-    body: {
-  email: employeeEmail.trim().toLowerCase()
-}
-  });
-
-if (invitationError) {
-  let details = invitationError.message;
-
-  if (invitationError.context) {
-    try {
-      const response = await invitationError.context.clone().text();
-      if (response) details += ' — ' + response;
-    } catch {}
-  }
-
-  throw new Error(details);
-}
-
-if (invitationResult?.error) {
-  throw new Error(invitationResult.error);
-}
-
-setEmployees(previous => [data, ...previous]);
-    setEmployeeName('');
-    setEmployeeEmail('');
-    setEmployeeRole('cashier');
-setEmployeeBranch('');
-setEmployeePermissions({
-  dashboard: true,
-  sales: false,
-  inventory: false,
-  customers: false,
-  suppliers: false,
-  expenses: false,
-  reports: false,
-  employees: false,
-  branches: false,
-  business_settings: false
-});
-    alert('Employee record created successfully!');
-  } catch (error) {
-    alert('Could not add employee: ' + error.message);
-  } finally {
-    setInvitingEmployee(false);
-  }
-}
 
 useEffect(() => {
   async function loadBranches() {
@@ -625,18 +645,17 @@ useEffect(() => {
 
     try {
       const { data: business, error: businessError } = await supabase
-  .from('businesses')
-  .select('id')
-  .eq('owner_id', user.id)
-  .maybeSingle();
+        .from('businesses')
+        .select('id')
+        .eq('owner_id', user.id)
+        .maybeSingle();
 
-if (businessError) throw businessError;
-
-if (!business) {
-  setBranches([]);
-  return;
-}
       if (businessError) throw businessError;
+
+      if (!business) {
+        setBranches([]);
+        return;
+      }
 
       const { data, error } = await supabase
         .from('branches')
@@ -647,6 +666,7 @@ if (!business) {
       if (error) throw error;
 
       setBranches(data || []);
+
     } catch (error) {
       console.error('Branch loading error:', error.message);
     } finally {
@@ -656,6 +676,7 @@ if (!business) {
 
   loadBranches();
 }, [user]);
+
 
 async function addBranch(e) {
   e.preventDefault();
@@ -924,6 +945,107 @@ const [notifications, setNotifications] = useState(
 );
 const [customers, setCustomers] = useState([]);
 const [suppliers, setSuppliers] = useState([]);
+const [supplierDocuments, setSupplierDocuments] = useState([]);
+const [documentSupplier, setDocumentSupplier] = useState('');
+const [documentName, setDocumentName] = useState('');
+const [documentExpiry, setDocumentExpiry] = useState('');
+const [documentNotes, setDocumentNotes] = useState('');
+const [documentFile, setDocumentFile] = useState(null);
+const [supplierRating, setSupplierRating] = useState(0);
+const [supplierReliability, setSupplierReliability] = useState('Not rated');
+const [supplierPerformanceNotes, setSupplierPerformanceNotes] = useState('');
+const [editingSupplierRatingId, setEditingSupplierRatingId] = useState(null);
+const [purchaseOrders, setPurchaseOrders] = useState([]);
+const [showPurchaseOrderHistory, setShowPurchaseOrderHistory] = useState(true);
+const [supplierPayments, setSupplierPayments] = useState([]);
+const [paymentOrderId, setPaymentOrderId] = useState('');
+const [paymentAmount, setPaymentAmount] = useState('');
+const [paymentDate, setPaymentDate] = useState(
+  new Date().toISOString().split('T')[0]
+);
+const [paymentMethod, setPaymentMethod] = useState('Cash');
+const [paymentReference, setPaymentReference] = useState('');
+const [paymentNotes, setPaymentNotes] = useState('');
+const [selectedSupplierPerformance, setSelectedSupplierPerformance] = useState(null);
+const [compareSupplierIds, setCompareSupplierIds] = useState([]);
+const [selectedPurchaseOrder, setSelectedPurchaseOrder] = useState(null);
+useEffect(() => {
+  async function loadPurchaseOrders() {
+    if (!user) {
+      setPurchaseOrders([]);
+      setPurchaseOrderItems([]);
+      return;
+    }
+
+    const { data, error } = await supabase
+      .from('purchase_orders')
+      .select('*, suppliers(name)')
+      .eq('owner_id', user.id)
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      console.error('Purchase orders loading error:', error.message);
+      return;
+    }
+
+    setPurchaseOrders(data || []);
+
+    const orderIds = (data || []).map(order => order.id);
+
+    if (orderIds.length === 0) {
+      setPurchaseOrderItems([]);
+      return;
+    }
+
+    const { data: items, error: itemsError } = await supabase
+      .from('purchase_order_items')
+      .select('*, products(name)')
+      .in('purchase_order_id', orderIds);
+
+    if (itemsError) {
+      console.error('Purchase order items loading error:', itemsError.message);
+      return;
+    }
+
+    setPurchaseOrderItems(items || []);
+  }
+
+  loadPurchaseOrders();
+}, [user]);
+useEffect(() => {
+  async function loadSupplierPayments() {
+    if (!user) {
+      setSupplierPayments([]);
+      return;
+    }
+
+    const { data, error } = await supabase
+      .from('supplier_payments')
+      .select('*')
+      .eq('owner_id', user.id)
+      .order('payment_date', { ascending: false });
+
+    if (error) {
+      console.error('Supplier payments loading error:', error.message);
+      return;
+    }
+
+    setSupplierPayments(data || []);
+  }
+
+  loadSupplierPayments();
+}, [user]);
+const [purchaseOrderItems, setPurchaseOrderItems] = useState([]);
+const [draftPurchaseItems, setDraftPurchaseItems] = useState([]);
+const [purchaseSupplier, setPurchaseSupplier] = useState('');
+const [purchaseProduct, setPurchaseProduct] = useState('');
+const [purchaseQuantity, setPurchaseQuantity] = useState(1);
+const [purchaseUnitCost, setPurchaseUnitCost] = useState('');
+const [purchaseNotes, setPurchaseNotes] = useState('');
+const [purchaseOrderDate, setPurchaseOrderDate] = useState(
+  new Date().toISOString().split('T')[0]
+);
+const [paymentDueDate, setPaymentDueDate] = useState('');
 const [customerName, setCustomerName] = useState('');
 const [supplierName, setSupplierName] = useState('');
 const [supplierPhone, setSupplierPhone] = useState('');
@@ -933,7 +1055,7 @@ const [customerPhone, setCustomerPhone] = useState('');
 const [selectedCustomerId, setSelectedCustomerId] = useState('');
   // Inventory data
   const [products, setProducts] = useState([]);
-
+const [showRestockList, setShowRestockList] = useState(false);
   const [productName, setProductName] = useState('');
   const [productPrice, setProductPrice] = useState('');
   const [productQuantity, setProductQuantity] = useState('');
@@ -988,6 +1110,27 @@ const estimatedProfit = totalSales - totalExpenses;
 const [lowStockThreshold, setLowStockThreshold] = useState(5);
   const lowStockProducts = products.filter(
   product => Number(product.quantity) <= lowStockThreshold
+);
+const outOfStockCount = products.filter(
+  product => Number(product.quantity) <= 0
+).length;
+
+const criticalStockCount = products.filter(
+  product => Number(product.quantity) > 0 &&
+             Number(product.quantity) <= 2
+).length;
+
+const lowStockCount = products.filter(
+  product => Number(product.quantity) > 2 &&
+             Number(product.quantity) <= lowStockThreshold
+).length;
+
+const unitsToRestock = lowStockProducts.reduce(
+  (total, product) =>
+    total + Math.max(
+      lowStockThreshold - Number(product.quantity), 0
+    ),
+  0
 );
 const bestSellingProducts = products
   .map(product => ({
@@ -1804,7 +1947,85 @@ async function deleteProduct(id) {
     }
   }
 }
+function downloadRestockList() {
+  if (lowStockProducts.length === 0) {
+    alert('There are no products to restock.');
+    return;
+  }
 
+  const rows = [
+    ['Product', 'Current Stock', 'Recommended Order'],
+    ...lowStockProducts.map(product => [
+      product.name,
+      product.quantity,
+      Math.max(
+        lowStockThreshold - Number(product.quantity),
+        0
+      )
+    ])
+  ];
+
+  const csv = rows
+    .map(row =>
+      row.map(value =>
+        `"${String(value).replace(/"/g, '""')}"`
+      ).join(',')
+    )
+    .join('\n');
+
+  const blob = new Blob([csv], {
+    type: 'text/csv;charset=utf-8;'
+  });
+
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+
+  link.href = url;
+  link.download = 'MauzoMate-Restock-List.csv';
+  link.click();
+
+  URL.revokeObjectURL(url);
+}
+function addDraftPurchaseItem(e) {
+  e.preventDefault();
+
+  const product = products.find(
+    item => item.id === purchaseProduct
+  );
+
+  if (!product) {
+    alert('Please select a product.');
+    return;
+  }
+
+  const quantity = Number(purchaseQuantity);
+  const unitCost = Number(purchaseUnitCost);
+
+  if (!Number.isInteger(quantity) || quantity <= 0) {
+    alert('Enter a valid quantity.');
+    return;
+  }
+
+  if (purchaseUnitCost === '' || !Number.isFinite(unitCost) || unitCost < 0) {
+    alert('Enter a valid purchase cost.');
+    return;
+  }
+
+  setDraftPurchaseItems(previous => [
+    ...previous,
+    {
+      product_id: product.id,
+      product_name: product.name,
+      quantity,
+      unit_cost: unitCost,
+      subtotal: quantity * unitCost
+    }
+  ]);
+
+  setPurchaseProduct('');
+  setPurchaseQuantity(1);
+  setPurchaseUnitCost('');
+}
 function clearProductForm() {
   setEditingId(null);
   setProductName('');
@@ -1812,12 +2033,13 @@ function clearProductForm() {
   setProductQuantity('');
 }
 
-  const menuItems = [
+ const menuItems = [
   ['Dashboard', '▦'],
   ['Sales', '🛒'],
   ['Inventory', '📦'],
   ['Customers', '👥'],
   ['Suppliers', '🏢'],
+  ['Purchase Orders', '📋'],
   ['Expenses', '💰'],
   ['Reports', '📊'],
   ['Employees', '👤'],
@@ -1828,7 +2050,304 @@ function clearProductForm() {
 if (authLoading) {
   return <p>Loading MauzoMate...</p>;
 }
+async function savePurchaseOrder(e) {
+ 
+  e.preventDefault();
 
+  if (!user) {
+    alert('Please sign in first.');
+    return;
+  }
+
+  if (!purchaseSupplier) {
+    alert('Please select a supplier.');
+    return;
+  }
+
+  if (draftPurchaseItems.length === 0) {
+    alert('Please add at least one product.');
+    return;
+  }
+
+  const total = draftPurchaseItems.reduce(
+    (sum, item) => sum + item.subtotal,
+    0
+  );
+
+  try {
+    const { data: order, error: orderError } = await supabase
+      .from('purchase_orders')
+      .insert({
+        owner_id: user.id,
+        supplier_id: purchaseSupplier,
+        order_date: purchaseOrderDate,
+        payment_due_date: paymentDueDate || null,
+        status: 'pending',
+        total_amount: total,
+        notes: purchaseNotes
+      })
+      .select()
+      .single();
+
+    if (orderError) throw orderError;
+
+    const items = draftPurchaseItems.map(item => ({
+      purchase_order_id: order.id,
+      product_id: item.product_id,
+      quantity: item.quantity,
+      unit_cost: item.unit_cost,
+      subtotal: item.subtotal
+    }));
+
+    const { error: itemsError } = await supabase
+      .from('purchase_order_items')
+      .insert(items);
+
+    if (itemsError) {
+      await supabase
+        .from('purchase_orders')
+        .delete()
+        .eq('id', order.id);
+
+      throw itemsError;
+    }
+
+    setPurchaseOrders(previous => [order, ...previous]);
+    setPurchaseOrderItems(previous => [...previous, ...items]);
+
+    setDraftPurchaseItems([]);
+    setPurchaseSupplier('');
+    setPurchaseNotes('');
+    setPurchaseOrderDate(new Date().toISOString().split('T')[0]);
+setPaymentDueDate('');
+    alert('Purchase order created successfully!');
+   } catch (error) {
+    alert('Could not create purchase order: ' + error.message);
+  }
+}
+
+async function recordSupplierPayment(e) {
+  e.preventDefault();
+
+  if (!user || !paymentOrderId || !paymentAmount) {
+    alert('Please select an order and enter a payment amount.');
+    return;
+  }
+
+  const order = purchaseOrders.find(
+    o => o.id === paymentOrderId
+  );
+
+  if (!order) {
+    alert('Purchase order not found.');
+    return;
+  }
+
+  const alreadyPaid = supplierPayments
+    .filter(p => p.purchase_order_id === paymentOrderId)
+    .reduce((sum, p) => sum + Number(p.amount), 0);
+
+  const balance = Number(order.total_amount) - alreadyPaid;
+  const amount = Number(paymentAmount);
+
+  if (amount <= 0 || amount > balance) {
+    alert(
+      `Payment must be greater than zero and no more than ${currency} ${balance.toFixed(2)}.`
+    );
+    return;
+  }
+
+  const { data, error } = await supabase
+    .from('supplier_payments')
+    .insert({
+      owner_id: user.id,
+      purchase_order_id: paymentOrderId,
+      amount,
+      payment_date: paymentDate,
+      payment_method: paymentMethod,
+      reference: paymentReference.trim() || null,
+      notes: paymentNotes.trim() || null
+    })
+    .select()
+    .single();
+
+  if (error) {
+    alert('Payment could not be saved: ' + error.message);
+    return;
+  }
+
+  setSupplierPayments(previous => [data, ...previous]);
+  setPaymentOrderId('');
+  setPaymentAmount('');
+  setPaymentReference('');
+  setPaymentNotes('');
+
+  alert('Supplier payment recorded successfully!');
+}
+
+async function saveSupplierRating(supplierId) {
+  e.preventDefault();
+
+  if (!user || !documentSupplier || !documentFile) {
+    alert('Please select a supplier and a document.');
+    return;
+  }
+
+  const allowedTypes = [
+    'application/pdf',
+    'image/jpeg',
+    'image/png'
+  ];
+
+  if (!allowedTypes.includes(documentFile.type)) {
+    alert('Only PDF, JPG and PNG files are allowed.');
+    return;
+  }
+
+  if (documentFile.size > 10 * 1024 * 1024) {
+    alert('File must not exceed 10 MB.');
+    return;
+  }
+
+  const safeName = documentFile.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+  const filePath = `${user.id}/${documentSupplier}/${Date.now()}-${safeName}`;
+
+  const { error: uploadError } = await supabase.storage
+    .from('supplier-documents')
+    .upload(filePath, documentFile);
+
+  if (uploadError) {
+    alert('Document upload failed: ' + uploadError.message);
+    return;
+  }
+
+  const { data, error } = await supabase
+    .from('supplier_documents')
+    .insert({
+      owner_id: user.id,
+      supplier_id: documentSupplier,
+      document_name: documentName.trim() || documentFile.name,
+      file_path: filePath,
+      expiry_date: documentExpiry || null,
+      notes: documentNotes.trim() || null
+    })
+    .select()
+    .single();
+
+  if (error) {
+    await supabase.storage
+      .from('supplier-documents')
+      .remove([filePath]);
+
+    alert('Could not save document details: ' + error.message);
+    return;
+  }
+
+  setSupplierDocuments(previous => [data, ...previous]);
+  setDocumentSupplier('');
+  setDocumentName('');
+  setDocumentExpiry('');
+  setDocumentNotes('');
+  setDocumentFile(null);
+
+  alert('Supplier document uploaded successfully!');
+}
+async function openSupplierDocument(document) {
+  if (!user || !document.file_path.startsWith(`${user.id}/`)) {
+    alert('You are not authorized to open this document.');
+    return;
+  }
+
+  const { data, error } = await supabase.storage
+    .from('supplier-documents')
+    .createSignedUrl(document.file_path, 60);
+
+  if (error) {
+    alert('Could not open document: ' + error.message);
+    return;
+  }
+
+  window.open(data.signedUrl, '_blank', 'noopener,noreferrer');
+}
+async function updatePurchaseOrderStatus(order) {
+  const newStatus = window.prompt(
+    'Enter new status: pending, received, or cancelled',
+    order.status
+  );
+
+  if (!newStatus) return;
+
+  const status = newStatus.trim().toLowerCase();
+
+  if (!['pending', 'received', 'cancelled'].includes(status)) {
+    alert('Invalid status.');
+    return;
+  }
+
+  if (order.status === 'received' && status !== 'received') {
+    alert('A received order cannot be changed to another status.');
+    return;
+  }
+
+  if (order.status === status) return;
+
+  if (status === 'received') {
+  const confirmed = window.confirm(
+    'Mark this order as received and add its quantities to inventory? This can only be done once.'
+  );
+
+  if (!confirmed) return;
+
+  const { error } = await supabase.rpc('receive_purchase_order', {
+    p_order_id: order.id
+  });
+
+  if (error) {
+    alert('Could not receive order: ' + error.message);
+    return;
+  }
+
+  setPurchaseOrders(previous =>
+    previous.map(item =>
+      item.id === order.id
+        ? { ...item, status: 'received', stock_applied: true }
+        : item
+    )
+  );
+
+  if (selectedPurchaseOrder?.id === order.id) {
+    setSelectedPurchaseOrder(previous => ({
+      ...previous,
+      status: 'received',
+      stock_applied: true
+    }));
+  }
+
+  alert('Order received! Inventory has been updated.');
+  return;
+}
+  const { error } = await supabase
+    .from('purchase_orders')
+    .update({ status })
+    .eq('id', order.id);
+
+  if (error) {
+    alert('Could not update order: ' + error.message);
+    return;
+  }
+
+  setPurchaseOrders(previous =>
+    previous.map(item =>
+      item.id === order.id ? { ...item, status } : item
+    )
+  );
+
+  if (selectedPurchaseOrder?.id === order.id) {
+    setSelectedPurchaseOrder(previous => ({ ...previous, status }));
+  }
+
+  alert('Purchase order status updated.');
+}
 if (isRecoveryMode) {
   return (
     <div className="auth-container">
@@ -2019,7 +2538,31 @@ return (
   <span>Today's sales minus expenses</span>
 </div>
             </section>
+<section className="stats stock-intelligence">
+  <div className="stat-card">
+    <p>Out of Stock</p>
+    <h2>{outOfStockCount}</h2>
+    <span>Products unavailable</span>
+  </div>
 
+  <div className="stat-card">
+    <p>Critical Stock</p>
+    <h2>{criticalStockCount}</h2>
+    <span>Only 1–2 units remaining</span>
+  </div>
+
+  <div className="stat-card">
+    <p>Low Stock</p>
+    <h2>{lowStockCount}</h2>
+    <span>Products needing attention</span>
+  </div>
+
+  <div className="stat-card">
+    <p>Units to Restock</p>
+    <h2>{unitsToRestock}</h2>
+    <span>To reach your stock threshold</span>
+  </div>
+</section>
             <section className="content-grid">
               <div className="panel">
                 <h2>Record a Sale</h2>
@@ -2094,6 +2637,59 @@ return (
             </section>
                    <section className="panel">
   <h2>Low Stock Alerts</h2>
+  <button
+  className="stock-restock-list-button"
+  type="button"
+  onClick={() => setShowRestockList(!showRestockList)}
+>
+  📋 {showRestockList ? 'Hide Restock List' : 'Prepare Restock List'}
+</button>
+<button
+  type="button"
+  className="stock-restock-list-button"
+  onClick={downloadRestockList}
+  style={{ marginLeft: '10px' }}
+>
+  📥 Download Restock List
+</button>
+{showRestockList && (
+  <div className="stock-restock-list">
+    <h3>📋 Recommended Restocking List</h3>
+
+    {lowStockProducts.length === 0 ? (
+      <p>No products currently need restocking.</p>
+    ) : (
+      <div className="inventory-table-wrapper">
+        <table className="inventory-table">
+          <thead>
+            <tr>
+              <th>Product</th>
+              <th>Current Stock</th>
+              <th>Recommended Order</th>
+            </tr>
+          </thead>
+
+          <tbody>
+            {lowStockProducts.map(product => (
+              <tr key={product.id}>
+                <td>{product.name}</td>
+                <td>{product.quantity}</td>
+                <td>
+                  <strong>
+                    {Math.max(
+                      lowStockThreshold - Number(product.quantity),
+                      0
+                    )} units
+                  </strong>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    )}
+  </div>
+)}
   <div className="setting-row">
   <label>Alert me when stock reaches:</label>
   <input
@@ -2116,6 +2712,7 @@ return (
     <th>Product</th>
 <th>Remaining Stock</th>
 <th>Status</th>
+<th>Recommended Order</th>
 <th>Action</th>
           </tr>
         </thead>
@@ -2139,6 +2736,14 @@ return (
       : 'Low Stock'}
   </span>
 </td>
+<td>
+  <span className="stock-recommendation">
+  {Math.max(
+    lowStockThreshold - Number(product.quantity), 0
+  )} units
+</span>
+</td>
+
 <td>
   <button
     type="button"
@@ -2354,8 +2959,1371 @@ return (
       )}
     </div>
   </div>
-  ) : activeSection === 'Suppliers' ? (
+  ) : activeSection === 'Purchase Orders' ? (
   <div className="page-content">
+    <h2>📋 Supplier Purchase Orders</h2>
+    <p>Create and manage orders from your suppliers.</p>
+
+    <div className="supplier-payment-alerts">
+  <h3>🔔 Supplier Payment Reminders</h3>
+
+  {purchaseOrders
+    .filter(order => {
+      if (!order.payment_due_date || order.status === 'cancelled') {
+        return false;
+      }
+
+      const paid = supplierPayments
+        .filter(p => p.purchase_order_id === order.id)
+        .reduce((sum, p) => sum + Number(p.amount), 0);
+
+      return Number(order.total_amount) - paid > 0;
+    })
+    .map(order => {
+      const paid = supplierPayments
+        .filter(p => p.purchase_order_id === order.id)
+        .reduce((sum, p) => sum + Number(p.amount), 0);
+
+      const balance = Number(order.total_amount) - paid;
+
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+
+      const dueDate = new Date(
+        `${order.payment_due_date}T00:00:00`
+      );
+
+      const daysLeft = Math.round(
+        (dueDate - today) / (1000 * 60 * 60 * 24)
+      );
+
+      if (daysLeft > 7) return null;
+
+      return (
+        <div
+          key={order.id}
+          className={
+            daysLeft < 0
+              ? 'payment-overdue'
+              : 'payment-due-soon'
+          }
+        >
+          <strong>
+            {daysLeft < 0 ? '⚠️ OVERDUE' : '📅 DUE SOON'}
+          </strong>
+
+          <p>
+            Supplier: {
+              suppliers.find(s => s.id === order.supplier_id)?.name
+              || 'Unknown Supplier'
+            }
+          </p>
+
+          <p>
+            Due Date: {order.payment_due_date}
+          </p>
+
+          <p>
+            Outstanding: {currency} {balance.toLocaleString()}
+          </p>
+
+          <p>
+            {daysLeft < 0
+              ? `${Math.abs(daysLeft)} days overdue`
+              : daysLeft === 0
+              ? 'Due today'
+              : `Due in ${daysLeft} days`}
+          </p>
+        </div>
+      );
+    })}
+
+  {!purchaseOrders.some(order => {
+    if (!order.payment_due_date || order.status === 'cancelled') {
+      return false;
+    }
+
+    const paid = supplierPayments
+      .filter(p => p.purchase_order_id === order.id)
+      .reduce((sum, p) => sum + Number(p.amount), 0);
+
+    const daysLeft = Math.round(
+      (
+        new Date(`${order.payment_due_date}T00:00:00`) -
+        new Date(new Date().setHours(0, 0, 0, 0))
+      ) / (1000 * 60 * 60 * 24)
+    );
+
+    return Number(order.total_amount) - paid > 0 && daysLeft <= 7;
+  }) && (
+    <p>No upcoming or overdue supplier payments. 🎉</p>
+  )}
+</div>
+<div className="supplier-financial-health">
+  <h3>💹 Supplier Financial Health</h3>
+  <p>Monitor outstanding supplier obligations.</p>
+
+  <div className="stats">
+    <div className="stat-card">
+      <h3>Overdue Suppliers</h3>
+      <h2>
+        {new Set(
+          purchaseOrders
+            .filter(order => {
+              if (!order.payment_due_date || order.status === 'cancelled') return false;
+
+              const paid = supplierPayments
+                .filter(p => p.purchase_order_id === order.id)
+                .reduce((sum, p) => sum + Number(p.amount), 0);
+
+              const daysLeft = Math.round(
+                (new Date(`${order.payment_due_date}T00:00:00`) -
+                  new Date(new Date().setHours(0, 0, 0, 0))) /
+                  86400000
+              );
+
+              return daysLeft < 0 &&
+                Number(order.total_amount) - paid > 0;
+            })
+            .map(order => order.supplier_id)
+        ).size}
+      </h2>
+    </div>
+
+    <div className="stat-card">
+      <h3>Upcoming Payments</h3>
+      <h2>
+        {purchaseOrders.filter(order => {
+          if (!order.payment_due_date || order.status === 'cancelled') return false;
+
+          const paid = supplierPayments
+            .filter(p => p.purchase_order_id === order.id)
+            .reduce((sum, p) => sum + Number(p.amount), 0);
+
+          const daysLeft = Math.round(
+            (new Date(`${order.payment_due_date}T00:00:00`) -
+              new Date(new Date().setHours(0, 0, 0, 0))) /
+              86400000
+          );
+
+          return daysLeft >= 0 &&
+            daysLeft <= 7 &&
+            Number(order.total_amount) - paid > 0;
+        }).length}
+      </h2>
+    </div>
+
+    <div className="stat-card">
+      <h3>Payment Completion</h3>
+      <h2>
+        {(() => {
+          const total = purchaseOrders
+            .filter(order => order.status === 'received')
+            .reduce((sum, order) => sum + Number(order.total_amount), 0);
+
+          const paid = supplierPayments
+            .filter(payment =>
+              purchaseOrders.some(
+                order =>
+                  order.id === payment.purchase_order_id &&
+                  order.status === 'received'
+              )
+            )
+            .reduce((sum, payment) => sum + Number(payment.amount), 0);
+
+          return total > 0
+            ? `${Math.min(100, (paid / total) * 100).toFixed(1)}%`
+            : '0%';
+        })()}
+      </h2>
+    </div>
+  </div>
+</div>
+    <div className="stats supplier-payment-stats">
+  <div className="stat-card">
+    <h3>Total Supplier Payments</h3>
+    <h2>
+      {currency}{' '}
+      {supplierPayments
+        .reduce((sum, payment) => sum + Number(payment.amount), 0)
+        .toLocaleString()}
+    </h2>
+  </div>
+
+  <div className="stat-card">
+    <h3>Outstanding Supplier Debt</h3>
+    <h2>
+      {currency}{' '}
+      {purchaseOrders
+        .filter(order => order.status === 'received')
+        .reduce((sum, order) => {
+          const paid = supplierPayments
+            .filter(p => p.purchase_order_id === order.id)
+            .reduce((total, p) => total + Number(p.amount), 0);
+
+          return sum + Math.max(
+            0,
+            Number(order.total_amount) - paid
+          );
+        }, 0)
+        .toLocaleString()}
+    </h2>
+  </div>
+
+  <div className="stat-card">
+    <h3>Total Payments Recorded</h3>
+    <h2>{supplierPayments.length}</h2>
+  </div>
+</div>
+<div className="supplier-payment-trends">
+  <h3>📈 Supplier Payment Trends</h3>
+  <p>Track payments made over the last 7 days.</p>
+
+  {Array.from({ length: 7 }, (_, index) => {
+    const date = new Date();
+    date.setDate(date.getDate() - (6 - index));
+
+    const dateKey = date.toISOString().split('T')[0];
+
+    const total = supplierPayments
+      .filter(payment => payment.payment_date === dateKey)
+      .reduce((sum, payment) => sum + Number(payment.amount), 0);
+
+    const highest = Math.max(
+      1,
+      ...supplierPayments.map(payment => Number(payment.amount))
+    );
+
+    return (
+      <div key={dateKey} className="payment-trend-row">
+        <div className="payment-trend-label">
+          <strong>
+            {date.toLocaleDateString('en', {
+              weekday: 'short',
+              day: 'numeric'
+            })}
+          </strong>
+          <span>
+            {currency} {total.toLocaleString()}
+          </span>
+        </div>
+
+        <div className="payment-trend-track">
+          <div
+            className="payment-trend-fill"
+            style={{
+              width: `${(total / highest) * 100}%`
+            }}
+          />
+        </div>
+      </div>
+    );
+  })}
+</div>
+<div className="form-card">
+  <h3>💳 Record Supplier Payment</h3>
+
+  <form onSubmit={recordSupplierPayment}>
+    <label>Select Purchase Order</label>
+    <select
+      value={paymentOrderId}
+      onChange={e => setPaymentOrderId(e.target.value)}
+      required
+    >
+      <option value="">Choose a purchase order</option>
+
+      {purchaseOrders
+        .filter(order => order.status === 'received')
+        .map(order => (
+          <option key={order.id} value={order.id}>
+            #{order.id.slice(0, 8).toUpperCase()} -
+            {' '}{order.suppliers?.name || 'Supplier'} -
+            {' '}{currency} {Number(order.total_amount).toLocaleString()}
+          </option>
+        ))}
+    </select>
+
+    <label>Payment Amount</label>
+    <input
+      type="number"
+      min="0.01"
+      step="0.01"
+      value={paymentAmount}
+      onChange={e => setPaymentAmount(e.target.value)}
+      placeholder="Enter payment amount"
+      required
+    />
+
+    <label>Payment Date</label>
+    <input
+      type="date"
+      value={paymentDate}
+      onChange={e => setPaymentDate(e.target.value)}
+      required
+    />
+
+    <label>Payment Method</label>
+    <select
+      value={paymentMethod}
+      onChange={e => setPaymentMethod(e.target.value)}
+    >
+      <option value="Cash">Cash</option>
+      <option value="Bank Transfer">Bank Transfer</option>
+      <option value="Mobile Money">Mobile Money</option>
+      <option value="Card">Card</option>
+      <option value="Other">Other</option>
+    </select>
+
+    <label>Payment Reference (optional)</label>
+    <input
+      type="text"
+      value={paymentReference}
+      onChange={e => setPaymentReference(e.target.value)}
+      placeholder="Transaction reference"
+    />
+
+    <label>Notes (optional)</label>
+    <textarea
+      value={paymentNotes}
+      onChange={e => setPaymentNotes(e.target.value)}
+      placeholder="Payment notes..."
+    />
+
+    <button type="submit">Record Payment</button>
+  </form>
+</div>
+    <div className="form-card">
+      <h3>Create New Purchase Order</h3>
+
+      <form onSubmit={savePurchaseOrder}>
+        <label>Select Supplier</label>
+        <select
+          value={purchaseSupplier}
+          onChange={e => setPurchaseSupplier(e.target.value)}
+          required
+        >
+          <option value="">Choose a supplier</option>
+          {suppliers.map(supplier => (
+            <option key={supplier.id} value={supplier.id}>
+              {supplier.name}
+            </option>
+          ))}
+        </select>
+
+        <label>Order Date</label>
+        <input
+          type="date"
+          value={purchaseOrderDate}
+          onChange={e => setPurchaseOrderDate(e.target.value)}
+          required
+        />
+<label>Payment Due Date</label>
+<input
+  type="date"
+  value={paymentDueDate}
+  onChange={e => setPaymentDueDate(e.target.value)}
+/>
+        <hr />
+
+        <h3>Add Products</h3>
+
+        <label>Select Product</label>
+        <select
+          value={purchaseProduct}
+          onChange={e => setPurchaseProduct(e.target.value)}
+        >
+          <option value="">Choose a product</option>
+          {products.map(product => (
+            <option key={product.id} value={product.id}>
+              {product.name}
+            </option>
+          ))}
+        </select>
+
+        <label>Quantity</label>
+        <input
+          type="number"
+          min="1"
+          step="1"
+          value={purchaseQuantity}
+          onChange={e => setPurchaseQuantity(e.target.value)}
+        />
+
+        <label>Unit Purchase Cost</label>
+        <input
+          type="number"
+          min="0"
+          step="0.01"
+          placeholder="Enter cost per unit"
+          value={purchaseUnitCost}
+          onChange={e => setPurchaseUnitCost(e.target.value)}
+        />
+
+        <button
+          type="button"
+          onClick={() =>
+            addDraftPurchaseItem({ preventDefault: () => {} })
+          }
+        >
+          + Add Product to Order
+        </button>
+
+        <div className="table-card">
+          <h3>Order Items</h3>
+
+          {draftPurchaseItems.length === 0 ? (
+            <p>No products added yet.</p>
+          ) : (
+            <div className="inventory-table-wrapper">
+              <table className="inventory-table">
+                <thead>
+                  <tr>
+                    <th>Product</th>
+                    <th>Quantity</th>
+                    <th>Unit Cost</th>
+                    <th>Subtotal</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+
+                <tbody>
+                  {draftPurchaseItems.map((item, index) => (
+                    <tr key={index}>
+                      <td>{item.product_name}</td>
+                      <td>{item.quantity}</td>
+                      <td>{currency} {item.unit_cost.toLocaleString()}</td>
+                      <td>{currency} {item.subtotal.toLocaleString()}</td>
+                      <td>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setDraftPurchaseItems(previous =>
+                              previous.filter((_, i) => i !== index)
+                            )
+                          }
+                        >
+                          Remove
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+          <div className="table-card">
+  <h3
+  onClick={() => setShowPurchaseOrderHistory(!showPurchaseOrderHistory)}
+  style={{ cursor: 'pointer' }}
+>
+  📋 Purchase Order History
+  {showPurchaseOrderHistory ? ' ▲' : ' ▼'}
+</h3>
+
+  {showPurchaseOrderHistory && (
+  purchaseOrders.length === 0 ? (
+    <p>No purchase orders found yet.</p>
+  ) : (
+    <div className="inventory-table-wrapper">
+      <table className="inventory-table">
+        <thead>
+          <tr>
+            <th>Order #</th>
+            <th>Supplier</th>
+            <th>Order Date</th>
+            <th>Total</th>
+<th>Amount Paid</th>
+<th>Outstanding Balance</th>
+<th>Status</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+
+        <tbody>
+          {purchaseOrders.map((order, index) => (
+            <tr key={order.id}>
+              <td>{index + 1}</td>
+              <td>{order.suppliers?.name || 'Unknown supplier'}</td>
+              <td>{order.order_date}</td>
+
+<td>
+  {currency} {Number(order.total_amount).toLocaleString()}
+</td>
+
+<td>
+  {currency}{' '}
+  {supplierPayments
+    .filter(p => p.purchase_order_id === order.id)
+    .reduce((sum, p) => sum + Number(p.amount), 0)
+    .toLocaleString()}
+</td>
+
+<td>
+  {currency}{' '}
+  {Math.max(
+    0,
+    Number(order.total_amount || 0) -
+    supplierPayments
+      .filter(p => p.purchase_order_id === order.id)
+      .reduce((sum, p) => sum + Number(p.amount), 0)
+  ).toLocaleString()}
+</td>
+
+<td>{order.status}</td>
+
+<td>
+  <button
+    type="button"
+    onClick={() => updatePurchaseOrderStatus(order)}
+  >
+    Update Status
+  </button>
+
+  <button
+    type="button"
+    onClick={() => setSelectedPurchaseOrder(order)}
+  >
+    View Details
+  </button>
+</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+     )
+)}
+</div>
+{selectedPurchaseOrder && (
+    <div className="table-card purchase-order-print-area">
+    <h3>
+      Purchase Order Details
+    </h3>
+
+    <p>
+      Supplier: {selectedPurchaseOrder.suppliers?.name || 'Unknown supplier'}
+    </p>
+
+    <p>Order Date: {selectedPurchaseOrder.order_date}</p>
+<p>
+  Order Number: {selectedPurchaseOrder.id.slice(0, 8).toUpperCase()}
+</p>
+    <p>Status: {selectedPurchaseOrder.status}</p>
+
+    <div className="inventory-table-wrapper">
+      <table className="inventory-table">
+        <thead>
+          <tr>
+            <th>Product</th>
+            <th>Quantity</th>
+            <th>Unit Cost</th>
+            <th>Subtotal</th>
+          </tr>
+        </thead>
+
+        <tbody>
+          {purchaseOrderItems
+            .filter(item =>
+              item.purchase_order_id === selectedPurchaseOrder.id
+            )
+            .map(item => {
+              const product = products.find(
+                p => p.id === item.product_id
+              );
+
+              return (
+                <tr key={item.id}>
+                  <td>{product?.name || item.products?.name || 'Unknown product'}</td>
+                  <td>{item.quantity}</td>
+                  <td>{currency} {Number(item.unit_cost).toLocaleString()}</td>
+                  <td>{currency} {Number(item.subtotal).toLocaleString()}</td>
+                </tr>
+              );
+            })}
+        </tbody>
+      </table>
+    </div>
+
+    <h3>
+      Total: {currency}{' '}
+      {Number(selectedPurchaseOrder.total_amount).toLocaleString()}
+    </h3>
+    <div className="table-card">
+  <h3>💳 Payment History</h3>
+
+  {(() => {
+    const orderPayments = supplierPayments.filter(
+      payment =>
+        payment.purchase_order_id === selectedPurchaseOrder.id
+    );
+
+    const totalPaid = orderPayments.reduce(
+      (sum, payment) => sum + Number(payment.amount),
+      0
+    );
+
+    const balance = Math.max(
+      0,
+      Number(selectedPurchaseOrder.total_amount) - totalPaid
+    );
+
+    return (
+      <>
+        <p>
+          <strong>Total Paid:</strong> {currency} {totalPaid.toLocaleString()}
+        </p>
+
+        <p>
+          <strong>Outstanding:</strong> {currency} {balance.toLocaleString()}
+        </p>
+
+        {orderPayments.length === 0 ? (
+          <p>No payments recorded for this order yet.</p>
+        ) : (
+          <div className="inventory-table-wrapper">
+            <table className="inventory-table">
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Amount</th>
+                  <th>Method</th>
+                  <th>Reference</th>
+                </tr>
+              </thead>
+
+              <tbody>
+                {orderPayments.map(payment => (
+                  <tr key={payment.id}>
+                    <td>{payment.payment_date}</td>
+                    <td>
+                      {currency} {Number(payment.amount).toLocaleString()}
+                    </td>
+                    <td>{payment.payment_method}</td>
+                    <td>{payment.reference || '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </>
+    );
+  })()}
+</div>
+<button
+  type="button"
+  onClick={() => window.print()}
+>
+  🖨️ Print Purchase Order
+</button>
+    <button
+      type="button"
+      onClick={() => setSelectedPurchaseOrder(null)}
+    >
+      Close Details
+    </button>
+  </div>
+)}
+        </div>
+
+        <h3>
+          Order Total: {currency}{' '}
+          {draftPurchaseItems.reduce(
+            (sum, item) => sum + item.subtotal,
+            0
+          ).toLocaleString()}
+        </h3>
+
+        <label>Order Notes</label>
+        <textarea
+          placeholder="Optional notes for this order"
+          value={purchaseNotes}
+          onChange={e => setPurchaseNotes(e.target.value)}
+        />
+
+        <button
+          type="submit"
+          disabled={draftPurchaseItems.length === 0}
+        >
+          Create Purchase Order
+        </button>
+      </form>
+    </div>
+  </div>
+) : activeSection === 'Suppliers' ? (
+  <div className="page-content">
+    <div className="form-card">
+  <h3>📁 Supplier Contracts & Documents</h3>
+  <p>Upload and keep track of supplier agreements and documents.</p>
+
+  <form onSubmit={uploadSupplierDocument}>
+    <label>Select Supplier</label>
+    <select
+      value={documentSupplier}
+      onChange={e => setDocumentSupplier(e.target.value)}
+      required
+    >
+      <option value="">Choose a supplier</option>
+      {suppliers.map(supplier => (
+        <option key={supplier.id} value={supplier.id}>
+          {supplier.name}
+        </option>
+      ))}
+    </select>
+
+    <label>Document Name</label>
+    <input
+      type="text"
+      placeholder="e.g. Supply Agreement"
+      value={documentName}
+      onChange={e => setDocumentName(e.target.value)}
+    />
+
+    <label>Choose File (PDF, JPG or PNG)</label>
+    <input
+      type="file"
+      accept=".pdf,.jpg,.jpeg,.png"
+      onChange={e => setDocumentFile(e.target.files[0] || null)}
+      required
+    />
+
+    <label>Expiry Date (optional)</label>
+    <input
+      type="date"
+      value={documentExpiry}
+      onChange={e => setDocumentExpiry(e.target.value)}
+    />
+
+    <label>Notes (optional)</label>
+    <textarea
+      value={documentNotes}
+      onChange={e => setDocumentNotes(e.target.value)}
+      placeholder="Add document notes..."
+    />
+
+    <button type="submit">Upload Supplier Document</button>
+  </form>
+</div>
+<div className="table-card">
+  <div className="supplier-document-alerts">
+  <h3>⏰ Document Expiry Alerts</h3>
+
+  {(() => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const expiringDocuments = supplierDocuments.filter(document => {
+      if (!document.expiry_date) return false;
+
+      const expiry = new Date(`${document.expiry_date}T00:00:00`);
+      const daysLeft = Math.ceil(
+        (expiry - today) / (1000 * 60 * 60 * 24)
+      );
+
+      return daysLeft <= 30;
+    });
+
+    return expiringDocuments.length === 0 ? (
+      <p>No documents are expiring within the next 30 days.</p>
+    ) : (
+      expiringDocuments.map(document => {
+        const daysLeft = Math.ceil(
+          (
+            new Date(`${document.expiry_date}T00:00:00`) - today
+          ) / (1000 * 60 * 60 * 24)
+        );
+
+        return (
+          <div key={document.id} className="supplier-expiry-alert">
+            <strong>{document.document_name}</strong>
+            <p>
+              Supplier: {
+                suppliers.find(s => s.id === document.supplier_id)?.name
+                || 'Unknown Supplier'
+              }
+            </p>
+            <p>
+              {daysLeft < 0
+                ? `Expired ${Math.abs(daysLeft)} days ago`
+                : daysLeft === 0
+                ? 'Expires today'
+                : `Expires in ${daysLeft} days`}
+            </p>
+          </div>
+        );
+      })
+    );
+  })()}
+</div>
+  <h3>Saved Supplier Documents</h3>
+
+  {supplierDocuments.length === 0 ? (
+    <p>No supplier documents uploaded yet.</p>
+  ) : (
+    <div className="inventory-table-wrapper">
+      <table className="inventory-table">
+        <thead>
+          <tr>
+            <th>Document</th>
+            <th>Supplier</th>
+            <th>Expiry Date</th>
+            <th>Notes</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+
+        <tbody>
+          {supplierDocuments.map(document => (
+            <tr key={document.id}>
+              <td>{document.document_name}</td>
+              <td>
+                {suppliers.find(
+                  supplier => supplier.id === document.supplier_id
+                )?.name || 'Unknown Supplier'}
+              </td>
+              <td>{document.expiry_date || 'Not specified'}</td>
+              <td>{document.notes || '—'}</td>
+              <td>
+                <button
+                  type="button"
+                  onClick={() => openSupplierDocument(document)}
+                >
+                  View Document
+                </button>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )}
+</div>
+    <h2>📊 Supplier Performance</h2>
+<p>Track supplier activity and purchasing performance.</p>
+<div className="table-card">
+  <div className="stats">
+  <div className="stat-card">
+    <h3>Total Supplier Spending</h3>
+    <h2>
+      {currency}{' '}
+      {purchaseOrders
+        .filter(order => order.status === 'received')
+        .reduce(
+          (sum, order) => sum + Number(order.total_amount || 0),
+          0
+        ).toLocaleString()}
+    </h2>
+  </div>
+
+  <div className="stat-card">
+    <h3>Received Orders</h3>
+    <h2>
+      {purchaseOrders.filter(
+        order => order.status === 'received'
+      ).length}
+    </h2>
+  </div>
+
+  <div className="stat-card">
+    <h3>Pending Orders</h3>
+    <h2>
+      {purchaseOrders.filter(
+        order => order.status === 'pending'
+      ).length}
+    </h2>
+  </div>
+
+  <div className="stat-card">
+    <h3>Average Supplier Rating</h3>
+    <h2>
+      {suppliers.length
+        ? (
+            suppliers.reduce(
+              (sum, supplier) =>
+                sum + Number(supplier.rating || 0),
+              0
+            ) / suppliers.length
+          ).toFixed(1)
+        : '0.0'} / 5 ⭐
+    </h2>
+  </div>
+</div>
+<div className="supplier-spending-chart">
+  <div className="table-card supplier-alerts">
+  <h3>🚨 Supplier Alerts</h3>
+  <p>Important supplier performance warnings.</p>
+
+  {suppliers.filter(supplier => {
+    const spending = purchaseOrders
+      .filter(order =>
+        order.supplier_id === supplier.id &&
+        order.status === 'received'
+      )
+      .reduce(
+        (sum, order) => sum + Number(order.total_amount || 0),
+        0
+      );
+
+    const averageSpending = suppliers.length
+      ? purchaseOrders
+          .filter(order => order.status === 'received')
+          .reduce(
+            (sum, order) => sum + Number(order.total_amount || 0),
+            0
+          ) / suppliers.length
+      : 0;
+
+    return (
+      (supplier.rating > 0 && supplier.rating <= 2) ||
+      supplier.reliability === 'Unreliable' ||
+      (averageSpending > 0 && spending > averageSpending * 1.5)
+    );
+  }).map(supplier => (
+    <div key={supplier.id} className="supplier-alert-item">
+      <strong>{supplier.name}</strong>
+
+      {supplier.rating > 0 && supplier.rating <= 2 && (
+        <p>⭐ Low supplier rating: {supplier.rating}/5</p>
+      )}
+
+      {supplier.reliability === 'Unreliable' && (
+        <p>⚠️ Delivery reliability is marked Unreliable.</p>
+      )}
+
+      <p>
+        {(() => {
+          const spending = purchaseOrders
+            .filter(order =>
+              order.supplier_id === supplier.id &&
+              order.status === 'received'
+            )
+            .reduce(
+              (sum, order) => sum + Number(order.total_amount || 0),
+              0
+            );
+
+          const average = suppliers.length
+            ? purchaseOrders
+                .filter(order => order.status === 'received')
+                .reduce(
+                  (sum, order) => sum + Number(order.total_amount || 0),
+                  0
+                ) / suppliers.length
+            : 0;
+
+          return average > 0 && spending > average * 1.5
+            ? '💰 Spending is unusually high compared with the supplier average.'
+            : null;
+        })()}
+      </p>
+    </div>
+  ))}
+
+  {!suppliers.some(supplier =>
+    (supplier.rating > 0 && supplier.rating <= 2) ||
+    supplier.reliability === 'Unreliable'
+  ) && (
+    <p>No rating or delivery warnings. Check the spending alerts above.</p>
+  )}
+</div>
+  <h3>📊 Spending by Supplier</h3>
+  <p>Compare purchases from each supplier.</p>
+
+  {suppliers.map(supplier => {
+    const spending = purchaseOrders
+      .filter(
+        order =>
+          order.supplier_id === supplier.id &&
+          order.status === 'received'
+      )
+      .reduce(
+        (sum, order) => sum + Number(order.total_amount || 0),
+        0
+      );
+
+    const highestSpending = Math.max(
+      1,
+      ...suppliers.map(s =>
+        purchaseOrders
+          .filter(
+            order =>
+              order.supplier_id === s.id &&
+              order.status === 'received'
+          )
+          .reduce(
+            (sum, order) => sum + Number(order.total_amount || 0),
+            0
+          )
+      )
+    );
+
+    return (
+      <div key={supplier.id} className="supplier-chart-row">
+        <div className="supplier-chart-label">
+          <strong>{supplier.name}</strong>
+          <span>
+            {currency} {spending.toLocaleString()}
+          </span>
+        </div>
+
+        <div className="supplier-chart-track">
+          <div
+            className="supplier-chart-fill"
+            style={{
+              width: `${(spending / highestSpending) * 100}%`
+            }}
+          />
+        </div>
+      </div>
+    );
+  })}
+</div>
+<div className="table-card">
+  <h3>⚖️ Supplier Comparison</h3>
+  <p>Select suppliers to compare their performance.</p>
+
+  <div>
+    {suppliers.map(supplier => (
+      <label key={supplier.id} style={{
+        display: 'block',
+        margin: '10px 0'
+      }}>
+        <input
+          type="checkbox"
+          checked={compareSupplierIds.includes(supplier.id)}
+          onChange={e => {
+            setCompareSupplierIds(previous =>
+              e.target.checked
+                ? [...previous, supplier.id]
+                : previous.filter(id => id !== supplier.id)
+            );
+          }}
+        />
+        {' '}{supplier.name}
+      </label>
+    ))}
+  </div>
+
+  {compareSupplierIds.length > 0 && (
+    <div className="inventory-table-wrapper">
+      <table className="inventory-table">
+        <thead>
+          <tr>
+            <th>Supplier</th>
+            <th>Rating</th>
+            <th>Reliability</th>
+            <th>Received Orders</th>
+            <th>Total Spending</th>
+          </tr>
+        </thead>
+
+        <tbody>
+          {suppliers
+            .filter(supplier =>
+              compareSupplierIds.includes(supplier.id)
+            )
+            .map(supplier => {
+              const orders = purchaseOrders.filter(
+                order =>
+                  order.supplier_id === supplier.id &&
+                  order.status === 'received'
+              );
+
+              const spending = orders.reduce(
+                (sum, order) =>
+                  sum + Number(order.total_amount || 0),
+                0
+              );
+
+              return (
+                <tr key={supplier.id}>
+                  <td>{supplier.name}</td>
+                  <td>{supplier.rating || 0}/5 ⭐</td>
+                  <td>{supplier.reliability || 'Not rated'}</td>
+                  <td>{orders.length}</td>
+                  <td>
+                    {currency} {spending.toLocaleString()}
+                  </td>
+                </tr>
+              );
+            })}
+        </tbody>
+      </table>
+    </div>
+  )}
+
+ <button
+    type="button"
+    className="supplier-compare-clear"
+    onClick={() => setCompareSupplierIds([])}
+  >
+    Clear Comparison
+</button>
+</div>
+  <h3>🏆 Supplier Leaderboard</h3>
+  <p>Top-performing suppliers ranked automatically.</p>
+
+  {suppliers
+    .slice()
+    .sort((a, b) => {
+      const score = supplier => {
+        const reliabilityPoints = {
+          Reliable: 5,
+          Average: 3,
+          Unreliable: 0,
+          'Not rated': 0
+        };
+
+        const received = purchaseOrders.filter(
+          order =>
+            order.supplier_id === supplier.id &&
+            order.status === 'received'
+        ).length;
+
+        return (
+          Number(supplier.rating || 0) * 10 +
+          (reliabilityPoints[supplier.reliability] || 0) +
+          received
+        );
+      };
+
+      return score(b) - score(a);
+    })
+    .map((supplier, index) => (
+      <div key={supplier.id} className="stat-card">
+        <h3>
+          {index + 1}. {supplier.name}
+          <p>
+  <strong>Performance Score:</strong>{' '}
+  {Math.min(
+    100,
+    Number(supplier.rating || 0) * 10 +
+    (supplier.reliability === 'Reliable'
+      ? 30
+      : supplier.reliability === 'Average'
+      ? 18
+      : 0) +
+    Math.min(
+      20,
+      purchaseOrders.filter(
+        order =>
+          order.supplier_id === supplier.id &&
+          order.status === 'received'
+      ).length
+    )
+  )}/100
+</p>
+          {index === 0 ? ' 🥇' : ''}
+        </h3>
+
+        <p>
+          Rating: {supplier.rating > 0
+            ? '⭐'.repeat(supplier.rating)
+            : 'Not rated'}
+        </p>
+
+        <p>
+          Reliability: {supplier.reliability || 'Not rated'}
+        </p>
+      </div>
+    ))}
+</div>
+<div className="stats">
+  {suppliers.map(supplier => {
+    const supplierOrders = purchaseOrders.filter(
+      order => order.supplier_id === supplier.id
+    );
+
+    const totalSpent = supplierOrders
+      .filter(order => order.status === 'received')
+      .reduce(
+        (sum, order) => sum + Number(order.total_amount || 0),
+        0
+      );
+
+    const pendingOrders = supplierOrders.filter(
+      order => order.status === 'pending'
+    ).length;
+
+    const receivedOrders = supplierOrders.filter(
+      order => order.status === 'received'
+    ).length;
+
+    return (
+      <div className="stat-card" key={supplier.id}>
+        <h3>{supplier.name}</h3>
+        <p>Total Orders: {supplierOrders.length}</p>
+        <p>
+  Rating: {
+    supplier.rating > 0
+      ? '⭐'.repeat(supplier.rating) + ` (${supplier.rating}/5)`
+      : 'Not rated yet'
+  }
+</p>
+
+<p>
+  Reliability: {supplier.reliability || 'Not rated'}
+</p>
+{(() => {
+  const risk =
+    supplier.reliability === 'Unreliable' ||
+    (supplier.rating > 0 && supplier.rating <= 2)
+      ? 'High Risk'
+      : supplier.reliability === 'Reliable' &&
+        supplier.rating >= 4
+      ? 'Low Risk'
+      : 'Medium Risk';
+
+  return (
+    <p>
+      **Supplier Risk:** 
+      <strong>{risk}</strong>
+    </p>
+  );
+})()}
+{supplier.performance_notes && (
+  <p>
+    Notes: {supplier.performance_notes}
+  </p>
+)}
+        <p>Received: {receivedOrders}</p>
+        <p>Pending: {pendingOrders}</p>
+        <h3>{currency} {totalSpent.toLocaleString()}</h3>
+        <small>Total Received Purchases</small>
+        <button
+  type="button"
+  className="supplier-history-button"
+  onClick={() => {
+    setSelectedSupplierPerformance(null);
+    setEditingSupplierRatingId(supplier.id);
+    setSupplierRating(supplier.rating || 0);
+    setSupplierReliability(supplier.reliability || 'Not rated');
+    setSupplierPerformanceNotes(supplier.performance_notes || '');
+  }}
+>
+  ⭐ Rate Supplier
+</button>
+       <button
+  type="button"
+  className="supplier-history-button"
+  onClick={() => setSelectedSupplierPerformance(supplier)}
+>
+  View Purchase History
+</button>
+      </div>
+    );
+  })}
+  {selectedSupplierPerformance && (
+  <div className="table-card">
+    <h3>
+      Purchase History: {selectedSupplierPerformance.name}
+    </h3>
+
+    {purchaseOrders.filter(
+      order => order.supplier_id === selectedSupplierPerformance.id
+    ).length === 0 ? (
+      <p>No purchase orders for this supplier yet.</p>
+    ) : (
+      <div className="inventory-table-wrapper">
+        <table className="inventory-table">
+          <thead>
+            <tr>
+              <th>Order #</th>
+              <th>Date</th>
+              <th>Total</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+
+          <tbody>
+            {purchaseOrders
+              .filter(
+                order => order.supplier_id === selectedSupplierPerformance.id
+              )
+              .map((order, index) => (
+                <tr key={order.id}>
+                  <td>{index + 1}</td>
+                  <td>{order.order_date}</td>
+                  <td>
+                    {currency} {Number(order.total_amount).toLocaleString()}
+                  </td>
+                  <td>{order.status}</td>
+                </tr>
+              ))}
+          </tbody>
+        </table>
+      </div>
+    )}
+
+    <button
+  type="button"
+  className="supplier-history-button"
+  onClick={() => setSelectedSupplierPerformance(null)}
+>
+  Close History
+</button>
+  </div>
+)}
+{editingSupplierRatingId && (
+  <div className="form-card">
+    <h3>
+      Rate Supplier: {
+        suppliers.find(s => s.id === editingSupplierRatingId)?.name
+      }
+    </h3>
+
+    <form onSubmit={e => {
+      e.preventDefault();
+      saveSupplierRating(editingSupplierRatingId);
+    }}>
+      <label>Supplier Rating</label>
+      <select
+        value={supplierRating}
+        onChange={e => setSupplierRating(Number(e.target.value))}
+      >
+        {[0, 1, 2, 3, 4, 5].map(n => (
+          <option key={n} value={n}>
+            {n === 0 ? 'Not rated' : `${n} Star${n > 1 ? 's' : ''}`}
+          </option>
+        ))}
+      </select>
+
+      <label>Delivery Reliability</label>
+      <select
+        value={supplierReliability}
+        onChange={e => setSupplierReliability(e.target.value)}
+      >
+        <option value="Not rated">Not rated</option>
+        <option value="Reliable">Reliable</option>
+        <option value="Average">Average</option>
+        <option value="Unreliable">Unreliable</option>
+      </select>
+
+      <label>Performance Notes</label>
+      <textarea
+        value={supplierPerformanceNotes}
+        onChange={e => setSupplierPerformanceNotes(e.target.value)}
+        placeholder="Write notes about this supplier..."
+      />
+
+      <button type="submit">Save Rating</button>
+      <button
+        type="button"
+        onClick={() => setEditingSupplierRatingId(null)}
+      >
+        Cancel
+      </button>
+    </form>
+  </div>
+)}
+<button
+  type="button"
+  className="supplier-history-button"
+  onClick={() => setSelectedSupplierPerformance(null)}
+>
+  Close History
+</button>
+</div>
     <h2>Supplier Management</h2>
     <p>Manage your business suppliers.</p>
     <div className="form-card">
@@ -3015,14 +4983,25 @@ return (
         <td>{employee.role.replace('_', ' ')}</td>
         <td>{employee.status}</td>
         <td>
-          <button onClick={() => editEmployee(employee)}>
-            Edit
-          </button>
+  <div className="inventory-actions">
+    <button
+      type="button"
+      onClick={() => {
+  console.log('Employee selected:', employee);
+  editEmployee(employee);
+}}
+    >
+      Edit
+    </button>
 
-          <button onClick={() => deleteEmployee(employee.id)}>
-            Delete
-          </button>
-        </td>
+    <button
+      type="button"
+      onClick={() => deleteEmployee(employee.id)}
+    >
+      Delete
+    </button>
+  </div>
+</td>
       </tr>
     ))}
 </tbody>
