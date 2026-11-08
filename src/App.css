@@ -1703,10 +1703,9 @@ button:hover {
     padding: 24px 18px;
   }
 }
-/* More transparent sign-in card */
 .auth-card {
-  background: rgba(255, 255, 255, 0.18) !important;
-  backdrop-filter: blur(6px);
-  -webkit-backdrop-filter: blur(6px);
-  border: 1px solid rgba(255, 255, 255, 0.4);
+  background: rgba(255, 255, 255, 0.08) !important;
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  border: 1px solid rgba(255, 255, 255, 0.3);
 }
