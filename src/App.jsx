@@ -158,7 +158,8 @@ async function handleRecoveryPasswordChange() {
     const { data, error } = await supabase
       .from('products')
       .select('*')
-      .order('created_at', { ascending: false });
+      .eq('is_active', true)
+.order('created_at', { ascending: false });
 
     if (error) {
       alert('Could not load products: ' + error.message);
@@ -1106,7 +1107,66 @@ const todayExpenses = expenses
 
 const todayProfit = todaySales - todayExpenses;
 const estimatedProfit = totalSales - totalExpenses;
+const totalPurchaseSpending = purchaseOrders.reduce(
+  (total, order) => total + Number(order.total_amount || 0),
+  0
+);
 
+const totalSupplierPayments = supplierPayments.reduce(
+  (total, payment) => total + Number(payment.amount || 0),
+  0
+);
+
+const pendingPurchaseOrders = purchaseOrders.filter(
+  order => order.status === 'pending'
+).length;
+
+const receivedPurchaseOrders = purchaseOrders.filter(
+  order => order.status === 'received'
+).length;
+const supplierSpending = Object.values(
+  purchaseOrders.reduce((result, order) => {
+    const name = order.suppliers?.name || 'Unknown supplier';
+
+    if (!result[name]) {
+      result[name] = { name, total: 0, orders: 0 };
+    }
+
+    result[name].total += Number(order.total_amount || 0);
+    result[name].orders += 1;
+
+    return result;
+  }, {})
+).sort((a, b) => b.total - a.total);
+const monthlyRevenueTrend = Array.from(
+  { length: 6 },
+  (_, index) => {
+    const date = new Date();
+    date.setDate(1);
+    date.setMonth(date.getMonth() - (5 - index));
+
+    const monthRevenue = sales
+      .filter(sale => {
+        const saleDate = new Date(`${sale.sale_date}T00:00:00`);
+
+        return (
+          saleDate.getMonth() === date.getMonth() &&
+          saleDate.getFullYear() === date.getFullYear()
+        );
+      })
+      .reduce(
+        (total, sale) => total + Number(sale.amount || 0),
+        0
+      );
+
+    return {
+      month: date.toLocaleDateString('en', {
+        month: 'short'
+      }),
+      revenue: monthRevenue
+    };
+  }
+);
 const [lowStockThreshold, setLowStockThreshold] = useState(5);
   const lowStockProducts = products.filter(
   product => Number(product.quantity) <= lowStockThreshold
@@ -1929,24 +1989,31 @@ async function restockProduct(product) {
 
 }
 async function deleteProduct(id) {
- if (window.confirm('Are you sure you want to delete this product?')) {
-  const { error } = await supabase
-    .from('products')
-    .delete()
-    .eq('id', id);
-
-  if (error) {
-    alert(error.message);
+  if (!window.confirm('Are you sure you want to archive this product?')) {
     return;
   }
 
-  setProducts(products.filter(product => product.id !== id));
+  const { error } = await supabase
+    .from('products')
+    .update({ is_active: false })
+    .eq('id', id);
 
-    if (editingId === id) {
-      clearProductForm();
-    }
+  if (error) {
+    alert('Could not archive product: ' + error.message);
+    return;
   }
+
+  setProducts(previous =>
+    previous.filter(product => product.id !== id)
+  );
+
+  if (editingId === id) {
+    clearProductForm();
+  }
+
+  alert('Product archived successfully!');
 }
+
 function downloadRestockList() {
   if (lowStockProducts.length === 0) {
     alert('There are no products to restock.');
@@ -2042,6 +2109,7 @@ function clearProductForm() {
   ['Purchase Orders', '📋'],
   ['Expenses', '💰'],
   ['Reports', '📊'],
+['Business Intelligence', '📈'],
   ['Employees', '👤'],
   ['Branches', '🏬'],
   ['Business Settings', '⚙️'],
@@ -2185,7 +2253,7 @@ async function recordSupplierPayment(e) {
   alert('Supplier payment recorded successfully!');
 }
 
-async function saveSupplierRating(supplierId) {
+async function uploadSupplierDocument(e) {
   e.preventDefault();
 
   if (!user || !documentSupplier || !documentFile) {
@@ -2268,6 +2336,34 @@ async function openSupplierDocument(document) {
   }
 
   window.open(data.signedUrl, '_blank', 'noopener,noreferrer');
+}
+async function saveSupplierRating(supplierId) {
+  if (!user || !supplierId) return;
+
+  const { data, error } = await supabase
+    .from('suppliers')
+    .update({
+      rating: supplierRating,
+      reliability: supplierReliability,
+      performance_notes: supplierPerformanceNotes.trim()
+    })
+    .eq('id', supplierId)
+    .select()
+    .single();
+
+  if (error) {
+    alert('Could not save supplier rating: ' + error.message);
+    return;
+  }
+
+  setSuppliers(previous =>
+    previous.map(supplier =>
+      supplier.id === supplierId ? data : supplier
+    )
+  );
+
+  setEditingSupplierRatingId(null);
+  alert('Supplier rating saved successfully!');
 }
 async function updatePurchaseOrderStatus(order) {
   const newStatus = window.prompt(
@@ -2670,7 +2766,9 @@ return (
           </thead>
 
           <tbody>
-            {lowStockProducts.map(product => (
+            {[...lowStockProducts].sort((a, b) =>
+  Number(a.quantity) - Number(b.quantity)
+).map(product => (
               <tr key={product.id}>
                 <td>{product.name}</td>
                 <td>{product.quantity}</td>
@@ -2718,9 +2816,10 @@ return (
         </thead>
         <tbody>
           {lowStockProducts.map(product => (
-            <tr key={product.id}>
-              <td>{product.name}</td>
-              <td>{product.quantity}</td>
+           <tr key={product.id}>
+  <td>{lowStockProducts.indexOf(product) + 1}</td>
+  <td>{product.name}</td>
+  <td>{product.quantity}</td>
             <td>
   <span className={
     Number(product.quantity) === 0
@@ -4442,6 +4541,42 @@ return (
         <h2>{currency} {estimatedProfit.toLocaleString()}</h2>
       </div>
     </div>
+  <div className="stat-card">
+    <h3>Total Purchase Orders</h3>
+    <p>{purchaseOrders.length}</p>
+  </div>
+<div className="form-card">
+  
+  <h3>Spending by Supplier</h3>
+
+  {supplierSpending.length === 0 ? (
+    <p>No purchase-order data available yet.</p>
+  ) : (
+    <div className="inventory-table-wrapper">
+      <table className="inventory-table">
+        <thead>
+          <tr>
+            <th>Supplier</th>
+            <th>Orders</th>
+            <th>Total Spending</th>
+          </tr>
+        </thead>
+
+        <tbody>
+          {supplierSpending.map(supplier => (
+            <tr key={supplier.name}>
+              <td>{supplier.name}</td>
+              <td>{supplier.orders}</td>
+              <td>
+                {currency} {supplier.total.toLocaleString()}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )}
+</div>
     <div className="form-card">
       <h3>Record an Expense</h3>
       <form onSubmit={addExpense}>
@@ -4832,8 +4967,123 @@ return (
                 )}
               </div>
             </header>
+          
+{activeSection === 'Business Intelligence' ? (
+  <section className="page-content">
+    <h2>Business Intelligence</h2>
+    <p>Advanced insights into your business performance.</p>
 
-          {activeSection === 'Employees' ? (
+    <div className="stats-grid">
+      <div className="stat-card">
+        <h3>Total Revenue</h3>
+        <p>{currency} {totalSales.toLocaleString()}</p>
+      </div>
+
+      <div className="stat-card">
+        <h3>Total Expenses</h3>
+        <p>{currency} {totalExpenses.toLocaleString()}</p>
+      </div>
+
+      <div className="stat-card">
+        <h3>Purchase Spending</h3>
+        <p>{currency} {totalPurchaseSpending.toLocaleString()}</p>
+      </div>
+
+      <div className="stat-card">
+        <h3>Supplier Payments</h3>
+        <p>{currency} {totalSupplierPayments.toLocaleString()}</p>
+      </div>
+    </div>
+
+    <div className="stats-grid">
+      <div className="stat-card">
+        <h3>Pending Orders</h3>
+        <p>{pendingPurchaseOrders}</p>
+      </div>
+
+      <div className="stat-card">
+        <h3>Received Orders</h3>
+        <p>{receivedPurchaseOrders}</p>
+      </div>
+
+      <div className="stat-card">
+        <h3>Total Purchase Orders</h3>
+        <p>{purchaseOrders.length}</p>
+      </div>
+    </div>
+
+    <div className="form-card">
+      <div className="form-card">
+  <h3>📈 Monthly Revenue Trend</h3>
+
+  {monthlyRevenueTrend.every(item => item.revenue === 0) ? (
+    <p>No sales recorded in the last six months.</p>
+  ) : (
+    monthlyRevenueTrend.map(item => {
+      const maxRevenue = Math.max(
+        ...monthlyRevenueTrend.map(entry => entry.revenue),
+        1
+      );
+
+      return (
+        <div key={item.month} style={{ marginBottom: '18px' }}>
+          <div style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            marginBottom: '6px'
+          }}>
+            <strong>{item.month}</strong>
+            <span>
+              {currency} {item.revenue.toLocaleString()}
+            </span>
+          </div>
+
+          <div className="revenue-trend-track">
+            <div
+              className="revenue-trend-fill"
+              style={{
+                width: `${(item.revenue / maxRevenue) * 100}%`
+              }}
+            />
+          </div>
+        </div>
+      );
+    })
+  )}
+</div>
+      <h3>Spending by Supplier</h3>
+
+      {supplierSpending.length === 0 ? (
+        <p>No purchase-order data available yet.</p>
+      ) : (
+        <div className="inventory-table-wrapper">
+          <table className="inventory-table">
+            <thead>
+              <tr>
+                <th>Supplier</th>
+                <th>Orders</th>
+                <th>Total Spending</th>
+              </tr>
+            </thead>
+
+            <tbody>
+              {supplierSpending.map(supplier => (
+                <tr key={supplier.name}>
+                  <td>{supplier.name}</td>
+                  <td>{supplier.orders}</td>
+                  <td>
+                    {currency} {supplier.total.toLocaleString()}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  </section>
+) : activeSection === 'Employees' ? (
+  
   <section className="panel">
     <h2>Employee Management</h2>
     <p>Manage your business team and employee access.</p>
@@ -5103,7 +5353,7 @@ return (
     <div className="form-card">
       <h3>Business Profile</h3>
 
-      <form onSubmit={saveBusinessSettings}>
+      <form className="business-settings-form" onSubmit={saveBusinessSettings}>
         <label>Business Name</label>
         <input
           type="text"
@@ -5165,7 +5415,14 @@ return (
         <button type="submit" disabled={businessSaving}>
           {businessSaving ? 'Saving...' : 'Save Business Settings'}
         </button>
-      </form>
+          </form>
+
+      <div className="business-summary">
+        <h3>Business Profile Summary</h3>
+        <p><strong>Business Name:</strong> {businessName || 'Not set'}</p>
+        <p><strong>Phone:</strong> {businessPhone || 'Not set'}</p>
+        <p><strong>Currency:</strong> {currency}</p>
+      </div>
     </div>
   </section>
 
@@ -5275,18 +5532,6 @@ return (
               >
                 Update Password
               </button>
-
-              <h3 className="settings-heading">Business Summary</h3>
-              <div className="business-summary">
-                <h3>Business Profile Summary</h3>
-                <p><strong>Business Name:</strong> {businessName || 'Not set'}</p>
-                <p><strong>Phone:</strong> {businessPhone || 'Not set'}</p>
-                <p><strong>Currency:</strong> {currency}</p>
-                <h3>Business Profile Summary</h3>
-                <p><strong>Business Name:</strong> {businessName || 'Not set'}</p>
-                <p><strong>Phone:</strong> {businessPhone || 'Not set'}</p>
-                <p><strong>Currency:</strong> {currency}</p>
-              </div>
             </section>
 
           ) : null}
