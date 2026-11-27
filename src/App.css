@@ -23,7 +23,7 @@ body {
   width: 245px;
   height: 100vh;
   height: 100dvh;
-  background: #102b25;
+  background: #0B1535;
   color: white;
   position: fixed;
   inset: 0 auto 0 0;
@@ -66,7 +66,7 @@ body {
 }
 
 .nav-item.active {
-  background: #1d493e;
+  background: #1d4ed8;
   color: white;
   font-weight: 700;
 }
@@ -114,7 +114,7 @@ body {
 }
 
 .welcome {
-  background: linear-gradient(110deg, #116149, #168b67);
+  background: linear-gradient(110deg, #123B8A, #2563EB);
   color: white;
   padding: 30px;
   border-radius: 16px;
@@ -740,9 +740,8 @@ button:hover {
 .business-summary {
   margin-top: 20px;
   padding: 15px;
-  background: #eef5f1;
-  border-radius: 10px;
-  border-left: 4px solid #16845b;
+  background: #eff6ff;
+border-left: 4px solid #2864d8;
   max-width: 380px;
   width: 100%;
 }
@@ -776,9 +775,9 @@ button:hover {
 /* Sidebar and top navigation */
 .dark-mode .sidebar,
 .dark-mode .topbar {
-  background: #172720;
+  background: #0B1535;
   color: #ffffff;
-  border-color: #344b40;
+  border-color: #294775;
 }
 
 /* All common text */
@@ -901,10 +900,10 @@ button:hover {
   background: #30483b !important;
   color: #ffffff !important;
 }
+/* CYBER FUTURISTIC DARK MODE NAVIGATION */
 
-/* Navigation bars */
 .dark-mode .topbar {
-  background: #172720 !important;
+  background: #0B1535 !important;
   color: #ffffff !important;
 }
 
@@ -912,15 +911,16 @@ button:hover {
 .dark-mode .topbar p {
   color: #ffffff !important;
 }
+
 .dark-mode .sidebar .active {
-  background: #287a5c !important;
+  background: #1D4ED8 !important;
   color: #ffffff !important;
   border-radius: 8px;
 }
 
 .dark-mode .sidebar a:hover,
 .dark-mode .sidebar button:hover {
-  background: #205844 !important;
+  background: #1E40AF !important;
   color: #ffffff !important;
   border-radius: 8px;
 }
@@ -1164,7 +1164,7 @@ button:hover {
   }
 }
 .password-update-btn {
-  background: #16845b;
+  background: #2864d8;
   color: #ffffff;
   border: none;
   padding: 12px 22px;
@@ -1188,7 +1188,7 @@ button:hover {
 }
 .forgot-password-btn {
   background: transparent;
-  color: #16845b;
+  color: #2864d8;
   border: none;
   padding: 8px 0;
   font-weight: 600;
@@ -1240,7 +1240,7 @@ button:hover {
 }
 /* Keep Restock buttons consistent in dark mode */
 .dark-mode .inventory-table button {
-  background: #16845b;
+  background: #2864d8;
   color: #ffffff;
   border: none;
 }
@@ -1372,12 +1372,12 @@ button:hover {
   }
 
   .welcome {
-    background: linear-gradient(135deg, #102b25, #1d493e);
+    background: linear-gradient(110deg, #123B8A, #2563EB);
     color: white;
     padding: 18px 14px;
     border-radius: 14px;
     margin-bottom: 18px;
-    box-shadow: 0 4px 12px rgba(16, 43, 37, 0.12);
+    box-shadow: 0 4px 12px rgba(37, 99, 235, 0.18);
   }
 
   .welcome h2 {
@@ -1523,7 +1523,7 @@ button:hover {
 /* FINAL RESPONSIVE LAYOUT FIX */
 
 /* Tablets and smaller laptops */
-@media (max-width: 768px) {
+@media (max-width: 600px) {
   .sidebar {
     position: fixed;
     left: 0;
@@ -1634,7 +1634,7 @@ button:hover {
   width: 100%;
 }
 /* Compact navigation on smaller screens */
-@media (max-width: 850px) {
+@media (max-width: 600px) {
   .sidebar {
     position: relative !important;
     width: 100% !important;
@@ -1754,12 +1754,12 @@ body,
   cursor: pointer;
   border: none;
   border-radius: 6px;
-  background: #16845b;
+  background: #2864d8;
   color: white;
 }
 
 .inventory-table .inventory-actions button:hover {
-  background: #116b49;
+  background: #1e40af;
 }
 /* Temporary employee table click test */
 .inventory-table-wrapper {
@@ -1774,7 +1774,7 @@ body,
 }
 /* Smart Stock Intelligence */
 .stock-intelligence .stat-card {
-  border-left: 4px solid #16845b;
+  border-left: 4px solid #2563EB;
   transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
 
@@ -1789,40 +1789,40 @@ body,
 }
 
 .dark-mode .stock-intelligence .stat-card {
-  border-left-color: #34d399;
+  border-left-color: #60a5fa;
 }
 /* Smart restock recommendation */
 .stock-recommendation {
   display: inline-block;
   padding: 6px 10px;
   border-radius: 6px;
-  background: #dcfce7;
-  color: #166534;
+  background: #dbeafe;
+color: #1d4ed8;
   font-weight: 700;
   white-space: nowrap;
 }
 
 .dark-mode .stock-recommendation {
-  background: #14532d;
-  color: #bbf7d0;
+  background: #1e3a8a;
+  color: #bfdbfe;
 }
 /* Smart Restocking List */
 .stock-restock-list {
   margin-top: 20px;
   padding: 20px;
-  border: 1px solid #cbd8d0;
+  border: 1px solid #bfdbfe;
   border-radius: 12px;
-  background: #f8faf9;
+  background: #eff6ff;
 }
 
 .stock-restock-list h3 {
   margin-bottom: 16px;
-  color: #16845b;
+  color: #1d4ed8;
 }
 
 .dark-mode .stock-restock-list {
-  background: #1b2924;
-  border-color: #3b5147;
+  background: #111f40;
+  border-color: #294775;
 }
 .dark-mode .stock-restock-list,
 .dark-mode .stock-restock-list p,
@@ -1847,13 +1847,13 @@ body,
 }
 /* Restock List Button — Dark Mode */
 .dark-mode .stock-restock-list-button {
-  background: #16845b !important;
+  background: #2864d8  !important;
   color: #ffffff !important;
   border: none !important;
 }
 
 .dark-mode .stock-restock-list-button:hover {
-  background: #116b49 !important;
+  background: #1e40af !important;
 }
 @media print {
   body * {
@@ -1896,7 +1896,7 @@ body,
   padding: 10px 18px;
 }
 .supplier-history-button {
-  background: #198754;
+  background: #2864d8;
   color: white !important;
   border: none;
   padding: 10px 16px;
@@ -1905,7 +1905,7 @@ body,
 }
 
 .dark-mode .supplier-history-button {
-  background: #2d9d70;
+  background: #1e40af;
   color: white !important;
 }
 
@@ -1942,7 +1942,7 @@ body,
 
 .supplier-chart-fill {
   height: 100%;
-  background: linear-gradient(90deg, #198754, #35c98a);
+  background: linear-gradient(90deg, #2864d8, #1e40af);
   border-radius: 20px;
   transition: width 0.4s ease;
 }
@@ -1956,7 +1956,7 @@ body,
   background: #475569;
 }
 .supplier-compare-clear {
-  background: #198754;
+  background: #2864d8;
   color: #ffffff !important;
   border: none;
   padding: 10px 18px;
@@ -1966,7 +1966,7 @@ body,
 }
 
 .dark-mode .supplier-compare-clear {
-  background: #2d9d70;
+  background: #1e40af;
   color: #ffffff !important;
 }
 
@@ -2035,7 +2035,7 @@ body,
 
 .payment-trend-fill {
   height: 100%;
-  background: linear-gradient(90deg, #2563eb, #60a5fa);
+  background: linear-gradient(90deg, #2864d8, #1e40af);
   border-radius: 20px;
 }
 
@@ -2212,7 +2212,7 @@ body,
 
 .revenue-trend-fill {
   height: 100%;
-  background: linear-gradient(90deg, #287a55, #55b889);
+  background: linear-gradient(90deg, #2864d8, #1e40af );
   border-radius: 10px;
   transition: width 0.5s ease;
 }
@@ -2565,4 +2565,52 @@ body,
     transition-duration: 0.01ms !important;
     animation-duration: 0.01ms !important;
   }
+}
+/* TEMPORARY DESKTOP SIDEBAR TEST */
+@media (min-width: 1200px) {
+  .app .sidebar {
+    width: 245px !important;
+    min-width: 245px !important;
+    max-width: 245px !important;
+  }
+
+  .app .main {
+    margin-left: 245px !important;
+    width: auto !important;
+    max-width: none !important;
+  }
+}
+/* MAUZOMATE CYBER FUTURISTIC NAVIGATION */
+
+.app .sidebar .nav-item {
+  background: #14213D !important;
+  color: #DCE7FA !important;
+  border: 1px solid #294775 !important;
+  border-radius: 10px;
+  transition: all 0.2s ease;
+}
+
+.app .sidebar .nav-item:hover,
+.app .sidebar .nav-item.active {
+  background: #1D4ED8 !important;
+  color: #FFFFFF !important;
+  border: 1px solid #60A5FA !important;
+}
+/* Forgot Password link styling */
+.auth-card .forgot-password-btn {
+  width: auto;
+  padding: 4px 0;
+  background: transparent;
+  color: #2563eb;
+  border: none;
+  border-radius: 0;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  box-shadow: none;
+}
+
+.auth-card .forgot-password-btn:hover {
+  background: transparent;
+  text-decoration: underline;
 }

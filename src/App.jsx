@@ -1,19 +1,10 @@
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, lazy, Suspense } from 'react';
 import './App.css';
-import {
-  
-  LineChart,
-  Line,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer
-} from 'recharts';
 import Auth from './Auth';
 import { supabase } from './supabase';
 import { useRef } from 'react';
+const SalesChart = lazy(() => import('./SalesChart'));
 function App() {
   const [user, setUser] = useState(null);
   const [isEmployee, setIsEmployee] = useState(false);
@@ -1054,6 +1045,7 @@ const [supplierEmail, setSupplierEmail] = useState('');
 const [supplierAddress, setSupplierAddress] = useState('');
 const [customerPhone, setCustomerPhone] = useState('');
 const [selectedCustomerId, setSelectedCustomerId] = useState('');
+const [customerHistoryId, setCustomerHistoryId] = useState(null);
   // Inventory data
   const [products, setProducts] = useState([]);
 const [showRestockList, setShowRestockList] = useState(false);
@@ -1297,20 +1289,21 @@ setAmount('');
 }
 async function exportData() {
   try {
-    const { data: branchesData, error: branchesError } = await supabase
-      .from('branches')
-      .select('*');
-
-    if (branchesError) throw branchesError;
+   
 
     const { data: settingsData, error: settingsError } = await supabase
       .from('businesses')
       .select('*')
       .eq('owner_id', user.id)
-      .maybesingle();
+      .maybeSingle();
 
     if (settingsError) throw settingsError;
+ const { data: branchesData, error: branchesError } = await supabase
+     .from('branches')
+.select('*')
+.eq('business_id', settingsData.id);
 
+    if (branchesError) throw branchesError;
     const { data: employeesData, error: employeesError } = await supabase
       .from('business_members')
       .select('*')
@@ -2865,30 +2858,12 @@ return (
   {salesByDate.length === 0 ? (
     <p>No sales data available yet.</p>
   ) : (
-    <ResponsiveContainer width="100%" height={300}>
-      <LineChart
-  data={salesByDate}
-  margin={{ top: 15, right: 20, left: 15, bottom: 5 }}
->
-      <CartesianGrid stroke="#e5e7eb" strokeDasharray="4 4" vertical={false} />
-        <XAxis dataKey="date" tick={{ fontSize: 12 }} />
-        <YAxis tickFormatter={(value) => `${currency} ${value}`} />
-        <Tooltip
-          formatter={(value) => [
-           `${currency} ${Number(value).toLocaleString()}`,
-            'Revenue'
-          ]}
-        />
-        <Line
-          type="monotone"
-          dataKey="revenue"
-          stroke="#16a34a"
-          dot={{ r: 5, fill: '#16a34a' }}
-          strokeWidth={4}
-          activeDot={{ r: 7 }}
-        />
-      </LineChart>
-    </ResponsiveContainer>
+    <Suspense fallback={<p>Loading sales chart...</p>}>
+  <SalesChart
+    salesByDate={salesByDate}
+    currency={currency}
+  />
+</Suspense>
   )}
                         </section>
           </>
@@ -2936,6 +2911,52 @@ return (
 
             <section className="panel">
               <h2>Transaction History</h2>
+              <div className="panel" style={{ marginBottom: '20px' }}>
+  <h2>Record a New Sale</h2>
+  <p className="muted">Create a transaction for a customer.</p>
+
+  <form onSubmit={addSale}>
+    <label>Select Product</label>
+    <select
+      value={description}
+      onChange={e => setDescription(e.target.value)}
+      required
+    >
+      <option value="">Select a product</option>
+      {products.map(product => (
+        <option key={product.id} value={product.name}>
+          {product.name} — {currency} {product.price} (Stock: {product.quantity})
+        </option>
+      ))}
+    </select>
+
+    <label>Select Customer</label>
+    <select
+      value={selectedCustomerId}
+      onChange={e => setSelectedCustomerId(e.target.value)}
+    >
+      <option value="">Select a customer (optional)</option>
+      {customers.map(customer => (
+        <option key={customer.id} value={customer.id}>
+          {customer.name}
+        </option>
+      ))}
+    </select>
+
+    <label>Quantity Sold</label>
+    <input
+      type="number"
+      min="1"
+      step="1"
+      value={quantitySold}
+      onChange={e => setQuantitySold(e.target.value)}
+      placeholder="Enter quantity"
+      required
+    />
+
+    <button type="submit">+ Record Sale</button>
+  </form>
+</div>
               <p className="muted">A record of your shop's sales.</p>
 
               {sales.length === 0 ? (
@@ -3049,6 +3070,15 @@ return (
   <button onClick={() => deleteCustomer(customer.id)}>
     Delete
   </button>
+  <button
+  type="button"
+  onClick={() => {
+    console.log('Customer selected:', customer.id);
+    setCustomerHistoryId(customer.id);
+  }}
+>
+  View History
+</button>
 </td>
                 </tr>
               ))}
@@ -3057,7 +3087,64 @@ return (
         </div>
       )}
     </div>
+    {customerHistoryId && (() => {
+  const customer = customers.find(
+    item => String(item.id) === String(customerHistoryId)
+  );
+
+  const customerSales = sales.filter(
+    sale => String(sale.customer_id) === String(customerHistoryId)
+  );
+
+  const totalSpent = customerSales.reduce(
+    (total, sale) => total + Number(sale.amount || 0),
+    0
+  );
+
+  return (
+    <div className="table-card">
+      <h3>Purchase History: {customer?.name || 'Customer'}</h3>
+
+      <p>Total purchases: {customerSales.length}</p>
+
+      <p>
+        Total spent: {currency} {totalSpent.toLocaleString()}
+      </p>
+
+      {customerSales.length === 0 ? (
+        <p>No purchases recorded for this customer yet.</p>
+      ) : (
+        <div className="inventory-table-wrapper">
+          <table className="inventory-table">
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Product</th>
+                <th>Quantity</th>
+                <th>Amount</th>
+              </tr>
+            </thead>
+
+            <tbody>
+              {customerSales.map((sale, index) => (
+                <tr key={sale.id || index}>
+                  <td>{sale.sale_date || sale.date || '—'}</td>
+                  <td>{sale.description || '—'}</td>
+                  <td>{sale.quantity ?? 0}</td>
+                  <td>
+                    {currency} {Number(sale.amount || 0).toLocaleString()}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+})()}
   </div>
+  
   ) : activeSection === 'Purchase Orders' ? (
   <div className="page-content">
     <h2>📋 Supplier Purchase Orders</h2>
@@ -3134,6 +3221,7 @@ return (
               : `Due in ${daysLeft} days`}
           </p>
         </div>
+        
       );
     })}
 
@@ -3158,6 +3246,7 @@ return (
     <p>No upcoming or overdue supplier payments. 🎉</p>
   )}
 </div>
+
 <div className="supplier-financial-health">
   <h3>💹 Supplier Financial Health</h3>
   <p>Monitor outstanding supplier obligations.</p>
